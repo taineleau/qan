@@ -57,8 +57,6 @@ A: Yes, from what we observed, the actions do change over time. We are making a 
 2. Q: Is the regression really necessary?
 A: We think the added regression operation is the most important factor making our QAN converge so faster. Actually this is also extremely useful for all hyperparameter optimization tasks. Thus we already integrated this trick into another hyperparameter tuning tool [DrMAD](https://github.com/nicholas-leonard/drmad). But we are still investigating exactly to what extent this regressor contribute to the overall performance. 
 
-3. Q: is Jie Fu single? (ok, it's a fake question...don't be so serious...)
-A: Yes! :see_no_evil:
 
 ## Citation
 ```
