@@ -1,6 +1,14 @@
 # Deep Q-Networks for Accelerating the Training of Deep Neural Networks
 
-Source code to the paper [Deep Q-Networks for Accelerating the Training of Deep Neural Networks](https://arxiv.org/abs/1606.01467)
+> Source code to the paper [https://arxiv.org/abs/1606.01467](https://arxiv.org/abs/1606.01467)
+
+## Casual abstract and our motivations
+![](https://github.com/bigaidream-projects/qan/blob/master/angry_catapult.jpg)
+
+Using DQNs for tuning hyperparameters is not new. Previous attempts ignore the side-effest of the global update machanism of back-propagation. We add a regressor to every layer to make sure that the weights do not change after every episode. Then we realize that this can actually itself accelerate the over hyperparameter tuning process significantly. Obviously, if we only gradually change some hyperparameters, the training trajectories of the DNN being tuned by DQNs should not differ significantly between episodes. This is like the catapult used in Angry Birds...
+
+Actually, our previous method on hyperparameter optimization, [DrMAD](https://github.com/nicholas-leonard/drmad), is inspired by an anime [One Punch Man](https://www.youtube.com/watch?v=lVqS0ntI_GU). The bald hero, Saitama, can always knock down the opponent in one hit. I say to myself: hmmm, maybe we can finish the hyperparameter optimization in one hit... Then it works...
+
 
 ## Reproduce our results on MNIST
 
@@ -38,10 +46,17 @@ python paint_mini_vs.py;
 2. Learning rate can be set in `/ataricifar/dqn/cnnGameEnv.lua`, in the `step` function. 
 3. When to stop doing regression is in `/ataricifar/dqn/cnnGameEnv/lua`, in line 250
 
-## TODO
-1. Experiments on CIFAR-10
-2. Transfer learning: subset of CIFAR-10 to full CIFAR-10
-3. Visualization of the actions taken by the DQN. For example, show which categories have been used at every iteration. 
+---
+
+## FAQ
+1. Q: Do the actions change over time? Do they converge to something like the alternated classes with uniform sampling heuristics that is always used in CNNs? 
+A: Yes, from what we observed, the actions do change over time. We are making a visualization tool to show what actions have been taken at every iteration. 
+
+2. Q: Is the regression really necessary?
+A: We think the added regression operation is the most important factor making our QAN converge so faster. Actually this is also extremely useful for all hyperparameter optimization tasks. Thus we already integrated this trick into another hyperparameter tuning tool [DrMAD](https://github.com/nicholas-leonard/drmad). But we are still investigating exactly to what extent this regressor contribute to the overall performance. 
+
+3. Q: is Jie Fu single? (ok, it's a fake question...don't be so serious...)
+A: Yes! :see_no_evil:
 
 ## Citation
 ```
@@ -55,4 +70,4 @@ python paint_mini_vs.py;
 
 ## Contact
 
-If you have any problems or suggestions, please contact me: jie.fu A~_~T u.nus.edu~~cation~~
+If you have any problems or suggestions, please contact: jie.fu A~_~T u.nus.edu~~cation~~
