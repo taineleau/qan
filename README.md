@@ -7,9 +7,9 @@
 
 This paper is actually inspired by Angry Birds.
 
- All the other attempts ignore the side-effect of the global update machanism of back-propagation. We add a regressor to every layer to make sure that the positions of neurons do not change after every episode. It does not make sense for the Atari games' to change their graphics APIs after every episode. We suspect that this is the main reason other method needs hundreds of thousands of episodes, whereas we only need 20 episodes on MNIST dataset. 
+ All the other attempts ignore the side-effect of the global update machanism of back-propagation. We add a regressor to every layer to make sure that the positions of neurons do not change at every episode. It does not make sense for the Atari games' to change their graphics APIs at every episode. We suspect that this is the main reason other methods need hundreds of thousands of episodes, whereas we only need 20 episodes on MNIST dataset. 
 
- Then we realize that this can actually itself accelerate the over hyperparameter tuning process significantly. Obviously, if we only gradually change some hyperparameters, the training trajectories of the DNN being tuned by DQNs should not differ significantly between episodes. This is like the catapult used in Angry Birds...
+ Then we realize that this can actually itself accelerate the overall hyperparameter tuning process significantly. Obviously, if we only gradually change some hyperparameters, the training trajectories of the DNN being tuned by DQNs should not differ significantly between episodes. This is like the catapult used in Angry Birds...
 
 ## Reproduce our results on MNIST
 
@@ -50,11 +50,11 @@ python paint_mini_vs.py;
 ---
 
 ## FAQ
-1. Q: Do the actions change over time? Do they converge to something like the alternated classes with uniform sampling heuristics that is always used in CNNs? 
-A: Yes, from what we observed, the actions do change over time. We are making a visualization tool to show what actions have been taken at every iteration. 
+1. `Q:` Do the actions change over time? Do they converge to something like the alternated classes with uniform sampling heuristics that is always used in CNNs? 
+`A:` Yes, from what we observed, the actions do change over time. We are making a visualization tool to show what actions have been taken at every iteration. 
 
-2. Q: Is the regression really necessary?
-A: We think the added regression operation is the most important factor making our QAN converge so faster. Actually this is also extremely useful for all hyperparameter optimization tasks. Thus we already integrated this trick into another hyperparameter tuning tool [DrMAD](https://github.com/nicholas-leonard/drmad). But we are still investigating exactly to what extent this regressor contribute to the overall performance. 
+2. `Q:` Is the regression really necessary?
+`A:` We think the added regression operation is the most important factor making our QAN converge so faster. Actually this is also extremely useful for all hyperparameter optimization tasks. Thus we already integrated this trick into another hyperparameter tuning tool [DrMAD](https://github.com/nicholas-leonard/drmad). But we are still investigating exactly to what extent this regressor contribute to the overall performance. 
 
 
 ## Citation
