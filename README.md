@@ -7,10 +7,7 @@
 
 This paper is actually inspired by Angry Birds.
 
- All the other attempts ignore the side-effest of the global update machanism of back-propagation. We add a regressor to every layer to make sure that the weights do not change after every episode. Then we realize that this can actually itself accelerate the over hyperparameter tuning process significantly. Obviously, if we only gradually change some hyperparameters, the training trajectories of the DNN being tuned by DQNs should not differ significantly between episodes. This is like the catapult used in Angry Birds...
-
-Actually, our previous method on hyperparameter optimization, [DrMAD](https://github.com/nicholas-leonard/drmad), is inspired by an anime [One Punch Man](https://www.youtube.com/watch?v=lVqS0ntI_GU). The bald hero, Saitama, can always knock down the opponent in one hit. I say to myself: hmmm, maybe we can finish the hyperparameter optimization in one hit... Then it works...
-
+ All the other attempts ignore the side-effect of the global update machanism of back-propagation. We add a regressor to every layer to make sure that the weights do not change after every episode. Then we realize that this can actually itself accelerate the over hyperparameter tuning process significantly. Obviously, if we only gradually change some hyperparameters, the training trajectories of the DNN being tuned by DQNs should not differ significantly between episodes. This is like the catapult used in Angry Birds...
 
 ## Reproduce our results on MNIST
 
