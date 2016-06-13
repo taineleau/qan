@@ -11,7 +11,7 @@ This paper is partially inspired by Angry Birds.
 
  All the other attempts ignore the side-effect of the global update machanism of back-propagation. We add a regressor to every layer to make sure that the positions of neurons do not change at every episode. It does not make sense for the Atari games' to change their graphics APIs at every episode. We suspect that this is the main reason other methods need hundreds of thousands of episodes, whereas we only need 20 episodes on MNIST dataset. 
 
- Then we realize that this can actually itself accelerate the overall hyperparameter tuning process significantly. Obviously, if we only gradually change some hyperparameters, the training trajectories of the DNN being tuned by DQNs should not differ significantly between episodes. We can think of it as momentum used in stochastic gradient descent algorithms. Oh, this is also like the catapult used in Angry Birds...
+ Then we realize that the regressor itself can actually itself accelerate the overall hyperparameter tuning process significantly. Obviously, if we only gradually change some hyperparameters, the training trajectories of the DNN being tuned by DQNs should not differ significantly between episodes. We can think of the regressor as momentum used in stochastic gradient descent algorithms. Oh, this is also like the catapult used in Angry Birds...
 
 ## Reproduce our results on MNIST
 
