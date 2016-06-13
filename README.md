@@ -2,14 +2,16 @@
 
 > Source code to the paper [https://arxiv.org/abs/1606.01467](https://arxiv.org/abs/1606.01467)
 
+> My current thoughts on hyperparameter optimization can be found in my [blog article](https://bigaidream.gitbooks.io/tech-blog/content/2016/thoughts-hyperparameter.html).
+
 ## Casual abstract and our motivations
 ![](https://github.com/bigaidream-projects/qan/blob/master/angry_catapult.jpg)
 
-This paper is actually inspired by Angry Birds.
+This paper is partially inspired by Angry Birds.
 
  All the other attempts ignore the side-effect of the global update machanism of back-propagation. We add a regressor to every layer to make sure that the positions of neurons do not change at every episode. It does not make sense for the Atari games' to change their graphics APIs at every episode. We suspect that this is the main reason other methods need hundreds of thousands of episodes, whereas we only need 20 episodes on MNIST dataset. 
 
- Then we realize that this can actually itself accelerate the overall hyperparameter tuning process significantly. Obviously, if we only gradually change some hyperparameters, the training trajectories of the DNN being tuned by DQNs should not differ significantly between episodes. This is like the catapult used in Angry Birds...
+ Then we realize that this can actually itself accelerate the overall hyperparameter tuning process significantly. Obviously, if we only gradually change some hyperparameters, the training trajectories of the DNN being tuned by DQNs should not differ significantly between episodes. We can think of it as momentum used in stochastic gradient descent algorithms. Oh, this is also like the catapult used in Angry Birds...
 
 ## Reproduce our results on MNIST
 
