@@ -1,7 +1,9 @@
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import sys
 
-#fin = open('test_minibatch_bs256.log')
+
 fin = open('test_lr.log')
 
 ar = []
@@ -18,9 +20,24 @@ print('episode = ' + str(episode))
 ##baseline VS last episode
 
 t = range(0, epoch)
-bl = ar[0:epoch]
+#bl = ar[0:epoch]
+'''
+bl = []
+finbl = open('test_lr_baseline.log')
+for i in finbl:
+	bl.append(float(i))
+bl = bl[0:20]
+'''
+bl = []
+finbl = open('../../mnist/logs/test.log')
+finbl.readline()
+for i in finbl:
+	bl.append(round(float(i[1:-6])*10, 2))
+
+##
 lastepisode = []
 start = (episode-1) * epoch
+#start = 8 * epoch
 for i in xrange(start, start+epoch):
     lastepisode.append(ar[i])
 print(bl)

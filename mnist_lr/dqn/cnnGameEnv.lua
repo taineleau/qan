@@ -5,8 +5,6 @@ require 'optim'
 local cnnGameEnv = torch.class('cnnGameEnv')
 
 function cnnGameEnv:__init(opt)
-	--add a rouletee
-	--rouletee, lastloss read from file
 	self.base = '../save/'
 	function check(name)
 		local f=io.open(name, "r")
@@ -14,11 +12,12 @@ function cnnGameEnv:__init(opt)
 	end
 	print('init gameenv')
 	torch.manualSeed(os.time())
+	torch.setdefaulttensortype('torch.FloatTensor')
     self.model = self:create_mlp_model()
     self.model:cuda()
     self.parameters, self.gradParameters = self.model:getParameters()
     self.criterion = nn.ClassNLLCriterion():cuda()
-    self.trsize = 20000
+    self.trsize = 60000
     self.tesize = 10000
     geometry = {32, 32}
     self.trainData = mnist.loadTrainSet(self.trsize, geometry)
@@ -27,28 +26,25 @@ function cnnGameEnv:__init(opt)
     self.testData:normalizeGlobal(mean, std)
     self.classes = {'1','2','3','4','5','6','7','8','9','10'}
     self.confusion = optim.ConfusionMatrix(self.classes)
-    self.batchsize = 10
-    self.total_batch_number = math.ceil(self.trsize/self.batchsize)
-    self.learningRate = 0.05 --1e-3
+    self.batchsize = 64
+    self.total_batch_number = math.ceil(self.trsize/self.batchsize)  --mini-batch number in one epoch
+    self.learningRate = 0.05  --init learning rate
     self.weightDecay = 0
     self.momentum = 0
---	self.filter = torch.load(self.base..'cnnfilter1.t7')
+	--load filter for regression
 	self.w1 = torch.load(self.base..'cnnfilter1.t7')
 	self.w2 = torch.load(self.base..'cnnfilter2.t7')
 	self.w3 = torch.load(self.base..'cnnfilter3.t7')
 	self.w4 = torch.load(self.base..'cnnfilter4.t7')
-    --self.filter2 = torch.load(self.base..'target_mlp2') --TODO
-	--self.filter4 = torch.load(self.base..'target_mlp4')
     self.finalerr = 0.0001 
     self.epoch = 0
-    self.batchindex = 1
+    self.batchindex = 1  --train batch by batch
     self.channel = 1
-    self.er = 1
+    self.err = 2.5  --start error
     self.mapping = {}
-	self.terminal = false	
-	self.havenewrecord = false
+	self.terminal = false  --whether a episode game stop
     self.datapointer = 1  --serve as a pointer, scan all the training data in one iteration.
-    --self.model:float()
+	self.max_epoch = 20
 end
 
 function cnnGameEnv:create_mlp_model()
@@ -67,19 +63,14 @@ function cnnGameEnv:create_mlp_model()
     model:add(nn.Tanh())
     model:add(nn.Linear(200, 10))
     model:add(nn.LogSoftMax())
-    --[[model:add(nn.Reshape(1024))
-    model:add(nn.Linear(1024, 256))
-    model:add(nn.Tanh())
-    model:add(nn.Linear(256,10))
-    model:add(nn.LogSoftMax())]]
     return model
 end
 
 function cnnGameEnv:train()
+	--The training process is modified from [https://github.com/torch/demos/blob/master/train-a-digit-classifier/train-on-mnist.lua]
     local dataset = self.trainData
     -- epoch tracker
     self.batchindex = self.batchindex or 1
-    local time = sys.clock()
     local trainError = 0
     -- do one mini-batch
 	local bsize = math.min(self.batchsize, dataset:size()-self.datapointer+1)
@@ -109,7 +100,7 @@ function cnnGameEnv:train()
         for i = 1,bsize do
             self.confusion:add(output[i], targets[i])
         end
-        self.er = err
+        self.err = err
         return f,self.gradParameters
     end
     -- optimize on current mini-batch
@@ -125,9 +116,9 @@ function cnnGameEnv:train()
 end
 
 function cnnGameEnv:test()
+	--The testing process is also modified from [https://github.com/torch/demos/blob/master/train-a-digit-classifier/train-on-mnist.lua]
     local dataset = self.testData
     local testError = 0
-    local time = sys.clock()
     print('<trainer> on testing Set:')
     for t = 1,self.tesize do
        -- disp progress
@@ -199,20 +190,18 @@ function cnnGameEnv:regression(targets, weights, layernum)
     -- need to set weights back here: set back in line 161
 end
 
-
-
 function cnnGameEnv:reward(verbose, filter, tstate)
 	verbose = verbose or false
     local reward = 0
-    if self.er then
-        reward = 1 / math.abs(self.er - self.finalerr) 
+    if self.err then
+        reward = 1 / math.abs(self.err - self.finalerr) 
     end
 	if (verbose) then
         print ('finalerr: ' .. self.finalerr)
-		if self.er then print ('err: ' .. self.er) end
+		if self.err then print ('err: ' .. self.err) end
 		print ('reward: '.. reward)
 	end
-	print ('err: ' .. self.er)
+	print ('err: ' .. self.err)
 	print ('reward is: ' .. reward)
 	return reward
 end
@@ -223,10 +212,6 @@ function cnnGameEnv:getActions()
 		gameActions[i] = i
 	end
 	return gameActions
-end
-
-function cnnGameEnv:nObsFeature()
-
 end
 
 function cnnGameEnv:getState(verbose) --state is set in cnn.lua
@@ -248,7 +233,6 @@ end
 function cnnGameEnv:step(action, tof)
 	print('step')
 	io.flush()
-
 	--[[
 		action 1: increase
 		action 2: decrease
@@ -257,34 +241,31 @@ function cnnGameEnv:step(action, tof)
 	local delta = 0.005
 	local minlr = 0.005
 	local maxlr = 1.0
-	local outputtrain = 'train_lr.log'--'basetrain.log'--'baseline_raw_train.log'
-	local outputtest = 'test_lr.log'--'basetest.log'--'baseline_raw_test.log'
+	local outputtrain = 'train_lr_baseline1.log'--'basetrain.log'--'baseline_raw_train.log'
+	local outputtest = 'test_lr_baseline1.log'--'basetest.log'--'baseline_raw_test.log'
 
-    if (action == 1) then 
-        self.learningRate = math.min(self.learningRate + delta, maxlr);
-    elseif (action == 2) then 
-        self.learningRate = math.max(self.learningRate - delta, minlr);
-    end
+    --if (action == 1) then 
+    --    self.learningRate = math.min(self.learningRate + delta, maxlr);
+    --elseif (action == 2) then 
+    --    self.learningRate = math.max(self.learningRate - delta, minlr);
+    --end
 
     print('<trainer> on training set:' .. 'epoch #' .. self.epoch .. ', batchindex ' .. self.batchindex)
     trainAcc, trainErr = self:train()
     self.trainAcc = self.trainAcc or 0
     self.trainAcc = self.trainAcc + trainAcc
-	--local w2 = self.model:get(2).weight
-    --local w4 = self.model:get(4).weight
-	local ww = self.model:get(1).weight
 	print('batchindex = '.. self.batchindex)
 	print('totalbatchindex = '.. self.total_batch_number)
 
-    if self.epoch % 20 <= 5 then   --Let mlp train freely after 10 epoches.
-		local w1 = self.model:get(1).weight
-		local w2 = self.model:get(4).weight
-		local w3 = self.model:get(8).weight
-		local w4 = self.model:get(10).weight
-		self:regression(self.w1, w1, 1)
-		self:regression(self.w2, w2, 2)
-		self:regression(self.w3, w3, 3)
-		self:regression(self.w4, w4, 4)
+    if self.epoch % self.max_epoch <= 5 then   --let cnn train freely after 5 epoches.
+		--local w1 = self.model:get(1).weight
+		--local w2 = self.model:get(4).weight
+		--local w3 = self.model:get(8).weight
+		--local w4 = self.model:get(10).weight
+		--self:regression(self.w1, w1, 1)
+		--self:regression(self.w2, w2, 2)
+		--self:regression(self.w3, w3, 3)
+		--self:regression(self.w4, w4, 4)
     end
     if self.batchindex == self.total_batch_number then
         self.datapointer = 1 --reset the pointer
@@ -294,21 +275,13 @@ function cnnGameEnv:step(action, tof)
         self.trainAcc = 0
         testAcc,  testErr = self:test()
         os.execute('echo ' .. testAcc .. ' >> logs/' .. outputtest)
-        self.batchindex = 1
+        self.batchindex = 1 --reset the batch pointer
         self.epoch = self.epoch + 1
         print('epoch = ' .. self.epoch)
-        if self.epoch > 0 and self.epoch % 20 == 0 then
-			--[[local w1 = self.model:get(1).weight
-			local w2 = self.model:get(4).weight
-			local w3 = self.model:get(8).weight
-			local w4 = self.model:get(10).weight
-			torch.save('../save/cnnfilter1.t7', w1)
-			torch.save('../save/cnnfilter2.t7', w2)
-			torch.save('../save/cnnfilter3.t7', w3)
-			torch.save('../save/cnnfilter4.t7', w4)]]
+        if self.epoch > 0 and self.epoch % self.max_epoch == 0 then
+			--reset learning rate
 			self.learningRate = 0.05
 			self.terminal = true
-            print ('epoch 100!>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<')
             --reset model
             self.model = self:create_mlp_model()
             self.model:cuda()
@@ -324,6 +297,10 @@ function cnnGameEnv:nextRandomGame()
 end
 
 function cnnGameEnv:newGame()
+
+end
+
+function cnnGameEnv:nObsFeature()
 
 end
 

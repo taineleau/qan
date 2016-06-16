@@ -8,3 +8,7 @@ mnist_minibatch/dqn/logs/*.pdf
 mnist_lr/mnist/mnist.t7/
 mnist_minibatch/mnist/mnist.t7/
 mnist_minibatch/dqn/logs/paint.py
+
+mnist_lr/save
+mnist_minibatch/save
+mnist_lr/mnist/logs

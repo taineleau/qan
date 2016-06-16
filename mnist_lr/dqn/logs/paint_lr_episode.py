@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import sys
 
@@ -12,13 +14,14 @@ for i in fin:
 ar = [float(x) for x in ar]
 print(max(ar))
 
-episode = int(len(ar)/20)
+epoch = 20
+episode = int(len(ar)/epoch)
 print('episode = ' + str(episode))
 
 ##episode changing
 res = []
 for i in xrange(0, episode):
-    res.append(ar[(i+1)*20-1])
+    res.append(ar[(i+1)*epoch-1])
 print(res)
 t = range(0, episode)
 plt.title('Tuning Learning Rate')
@@ -27,4 +30,5 @@ plt.xlabel('Episode')
 plt.plot(t, res)
 ##
 
-plt.show()
+#plt.show()
+plt.savefig('eplr.pdf')
