@@ -1,5 +1,7 @@
 require 'cnnGameEnv'
 
 local cnn = cnnGameEnv()
-cnn:step()
-cnn:loaddata()
+for s = 1,6000 do
+	cnn:step()
+end
+--cnn:loaddata()

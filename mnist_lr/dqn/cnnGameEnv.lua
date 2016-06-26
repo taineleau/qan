@@ -26,7 +26,7 @@ function cnnGameEnv:__init(opt)
     self.testData:normalizeGlobal(mean, std)
     self.classes = {'1','2','3','4','5','6','7','8','9','10'}
     self.confusion = optim.ConfusionMatrix(self.classes)
-    self.batchsize = 64
+    self.batchsize = 10 
     self.total_batch_number = math.ceil(self.trsize/self.batchsize)  --mini-batch number in one epoch
     self.learningRate = 0.05  --init learning rate
     self.weightDecay = 0
@@ -104,10 +104,10 @@ function cnnGameEnv:train()
         return f,self.gradParameters
     end
     -- optimize on current mini-batch
-    config = config or {learningRate = self.learningRate,
+    self.config = self.config or {learningRate = self.learningRate,
                   momentum = self.momentum,
                   learningRateDecay = 5e-7}
-    optim.sgd(feval, self.parameters, config)
+    optim.sgd(feval, self.parameters, self.config)
     print (self.confusion)
     local trainAccuracy = self.confusion.totalValid * 100 
     print(trainAccuracy)
