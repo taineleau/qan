@@ -13,6 +13,11 @@ This paper is partially inspired by Angry Birds.
 
  Then we realize that the regressor itself can actually itself accelerate the overall hyperparameter tuning process significantly. Obviously, if we only gradually change some hyperparameters, the training trajectories of the DNN being tuned by DQNs should not differ significantly between episodes. We can think of the regressor as momentum used in stochastic gradient descent algorithms. Oh, this is also like the catapult used in Angry Birds...
 
+## TODOs
+1. [Knowledge Distillation for further acceleration](https://github.com/bigaidream-projects/qan/issues/11)
+2. [Visualization of actions over time](https://github.com/bigaidream-projects/qan/issues/2)
+3. More experiments
+
 ## Reproduce our results on MNIST
 
 ### Dependencies
