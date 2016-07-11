@@ -128,15 +128,15 @@ $PREFIX/bin/luarocks make
 RET=$?; if [ $RET -ne 0 ]; then echo "Error. Exiting."; exit $RET; fi
 echo "Lua-GD installation completed"
 
-echo
-echo "You can run experiments by executing: "
-echo
-echo "   ./run_cpu game_name"
-echo
-echo "            or   "
-echo
-echo "   ./run_gpu game_name"
-echo
-echo "For this you need to provide the rom files of the respective games (game_name.bin) in the roms/ directory"
-echo
+#echo
+#echo "You can run experiments by executing: "
+#echo
+#echo "   ./run_cpu game_name"
+#echo
+#echo "            or   "
+#echo
+#echo "   ./run_gpu game_name"
+#echo
+#echo "For this you need to provide the rom files of the respective games (game_name.bin) in the roms/ directory"
+#echo
 

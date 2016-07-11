@@ -2,13 +2,14 @@ require 'cunn'
 require 'cutorch'
 require 'dataset-mnist'
 require 'optim'
+require 'distilling_criterion'
 local cnnGameEnv = torch.class('cnnGameEnv')
 
 function cnnGameEnv:__init(opt)
 	self.base = '../save/'
 	function check(name)
-		local f=io.open(name, "r")
-		if f~=nil then io.close(f) return true else return false end
+		local f = io.open(name, "r")
+		if f ~= nil then io.close(f) return true else return false end
 	end
 	print('init gameenv')
 	torch.manualSeed(os.time())
@@ -16,7 +17,11 @@ function cnnGameEnv:__init(opt)
     self.model = self:create_mlp_model()
     self.model:cuda()
     self.parameters, self.gradParameters = self.model:getParameters()
-    self.criterion = nn.ClassNLLCriterion():cuda()
+	if opt.distilling_on then
+		self.criterion = distilling_criterion():cuda()
+	else
+    	self.criterion = nn.ClassNLLCriterion():cuda()
+	end
     self.trsize = 60000
     self.tesize = 10000
     geometry = {32, 32}
@@ -26,7 +31,7 @@ function cnnGameEnv:__init(opt)
     self.testData:normalizeGlobal(mean, std)
     self.classes = {'1','2','3','4','5','6','7','8','9','10'}
     self.confusion = optim.ConfusionMatrix(self.classes)
-    self.batchsize = 10 
+    self.batchsize = 64
     self.total_batch_number = math.ceil(self.trsize/self.batchsize)  --mini-batch number in one epoch
     self.learningRate = 0.05  --init learning rate
     self.weightDecay = 0
@@ -73,14 +78,14 @@ function cnnGameEnv:train()
     self.batchindex = self.batchindex or 1
     local trainError = 0
     -- do one mini-batch
-	local bsize = math.min(self.batchsize, dataset:size()-self.datapointer+1)
+	local bsize = math.min(self.batchsize, dataset:size()-self.datapointer + 1)
     local inputs = torch.CudaTensor(bsize, self.channel, 32, 32)
     local targets = torch.CudaTensor(bsize)
-    for i = 1,bsize do
+    for i = 1, bsize do
         local idx = self.datapointer
         local sample = dataset[idx]
         local input = sample[1]:clone()
-        local _,target = sample[2]:clone():max(1)
+        local _, target = sample[2]:clone():max(1)
         target = target:squeeze()
         inputs[i] = input
         targets[i] = target
@@ -97,17 +102,17 @@ function cnnGameEnv:train()
         local err = self.criterion:forward(output, targets)
         local df_do = self.criterion:backward(output, targets)
         self.model:backward(inputs, df_do)
-        for i = 1,bsize do
+        for i = 1, bsize do
             self.confusion:add(output[i], targets[i])
         end
         self.err = err
         return f,self.gradParameters
     end
     -- optimize on current mini-batch
-    self.config = self.config or {learningRate = self.learningRate,
+    config = config or {learningRate = self.learningRate,
                   momentum = self.momentum,
                   learningRateDecay = 5e-7}
-    optim.sgd(feval, self.parameters, self.config)
+    optim.sgd(feval, self.parameters, config)
     print (self.confusion)
     local trainAccuracy = self.confusion.totalValid * 100 
     print(trainAccuracy)
@@ -267,6 +272,7 @@ function cnnGameEnv:step(action, tof)
 		--self:regression(self.w3, w3, 3)
 		--self:regression(self.w4, w4, 4)
     end
+
     if self.batchindex == self.total_batch_number then
         self.datapointer = 1 --reset the pointer
         self.trainAcc = self.trainAcc / self.total_batch_number

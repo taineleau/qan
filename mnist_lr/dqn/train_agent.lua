@@ -43,6 +43,7 @@ cmd:option('-verbose', 2,
            'the higher the level, the more information is printed to screen')
 cmd:option('-threads', 1, 'number of BLAS threads')
 cmd:option('-gpu', -1, 'gpu flag')
+cmd:option('-distilling_on', 0, 'use distilling or not')
 
 cmd:text()
 
@@ -85,7 +86,9 @@ local win = nil
 local stepnum= 1000000 --171600 --62600000 --62600000=1000games --358800--11700000 --opt.steps
 while step < stepnum do
     step = step + 1
-	print('--------------------------------------------------------')
+	if step % 10 == 0 then
+		print('--------------------------------------------------------')
+	end
 	local action_index 
 	if step < 800000 then
 		action_index = agent:perceive(reward, screen, terminal)
@@ -110,7 +113,8 @@ while step < stepnum do
 
 
     if step%1000 == 0 then collectgarbage() end
-
+	
+	-- Test begin  
     if step % opt.eval_freq == 0 and step > learn_start then
 
         screen, reward, terminal = game_env:newGame()
@@ -121,7 +125,7 @@ while step < stepnum do
         episode_reward = 0
 
         local eval_time = sys.clock()
-        for estep=1,opt.eval_steps do
+        for estep = 1, opt.eval_steps do
             local action_index = agent:perceive(reward, screen, terminal, true, 0.05)
 
             -- Play game in test mode (episodes don't end when losing a life)
@@ -161,8 +165,10 @@ while step < stepnum do
             td_history[ind] = agent.tderr_avg
             qmax_history[ind] = agent.q_max
         end
-        print("V", v_history[ind], "TD error", td_history[ind], "Qmax", qmax_history[ind])
-
+		
+		if step % 10 == 0 then
+        	print("V", v_history[ind], "TD error", td_history[ind], "Qmax", qmax_history[ind])
+		end
         reward_history[ind] = total_reward
         reward_counts[ind] = nrewards
         episode_counts[ind] = nepisodes
@@ -171,15 +177,17 @@ while step < stepnum do
 
         local time_dif = time_history[ind+1] - time_history[ind]
 
-        local training_rate = opt.actrep*opt.eval_freq/time_dif
-
-        print(string.format(
-            '\nSteps: %d (frames: %d), reward: %.2f, epsilon: %.2f, lr: %G, ' ..
-            'training time: %ds, training rate: %dfps, testing time: %ds, ' ..
-            'testing rate: %dfps,  num. ep.: %d,  num. rewards: %d',
-            step, step*opt.actrep, total_reward, agent.ep, agent.lr, time_dif,
-            training_rate, eval_time, opt.actrep*opt.eval_steps/eval_time,
-            nepisodes, nrewards))
+        local training_rate = opt.actrep * opt.eval_freq / time_dif
+		
+		if step % 10 == 0 then
+        	print(string.format(
+            	'\nSteps: %d (frames: %d), reward: %.2f, epsilon: %.2f, lr: %G, ' ..
+            	'training time: %ds, training rate: %dfps, testing time: %ds, ' ..
+            	'testing rate: %dfps,  num. ep.: %d,  num. rewards: %d',
+				step, step*opt.actrep, total_reward, agent.ep, agent.lr, time_dif,
+				training_rate, eval_time, opt.actrep*opt.eval_steps/eval_time,
+				nepisodes, nrewards))
+		end
     end
 
     if step % opt.save_freq == 0 or step == opt.steps then
