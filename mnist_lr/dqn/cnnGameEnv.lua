@@ -6,6 +6,7 @@ require 'distilling_criterion'
 local cnnGameEnv = torch.class('cnnGameEnv')
 
 function cnnGameEnv:__init(opt)
+	print(opt)
 	self.base = '../save/'
 	function check(name)
 		local f = io.open(name, "r")
@@ -17,11 +18,7 @@ function cnnGameEnv:__init(opt)
     self.model = self:create_mlp_model()
     self.model:cuda()
     self.parameters, self.gradParameters = self.model:getParameters()
-	if opt.distilling_on then
-		self.criterion = distilling_criterion():cuda()
-	else
-    	self.criterion = nn.ClassNLLCriterion():cuda()
-	end
+    self.criterion = nn.ClassNLLCriterion():cuda()
     self.trsize = 60000
     self.tesize = 10000
     geometry = {32, 32}
@@ -50,6 +47,7 @@ function cnnGameEnv:__init(opt)
 	self.terminal = false  --whether a episode game stop
     self.datapointer = 1  --serve as a pointer, scan all the training data in one iteration.
 	self.max_epoch = 20
+	self.distilling_on = opt.distilling_on
 end
 
 function cnnGameEnv:create_mlp_model()
@@ -129,11 +127,14 @@ function cnnGameEnv:test()
        -- disp progress
        xlua.progress(t, self.tesize)
        -- get new sample
-       local input = torch.CudaTensor(1,self.channel,32,32)
+       local input = torch.CudaTensor(1, self.channel, 32, 32)
        input[1] = dataset.data[t]
        local target = dataset.labels[t]
-       -- test sample
+       -- test sample, pred is the probability assuption over ten class?
        local pred = self.model:forward(input[1])
+	   -- print("I want to see what is in pred:")
+	   print(pred:view(10))
+	   print(target)
        self.confusion:add(pred:view(10), target)
        -- compute error
        err = self.criterion:forward(pred, target)
@@ -285,6 +286,10 @@ function cnnGameEnv:step(action, tof)
         self.epoch = self.epoch + 1
         print('epoch = ' .. self.epoch)
         if self.epoch > 0 and self.epoch % self.max_epoch == 0 then
+			if self.epoch == 1 and self.distilling_on then
+				-- TODO: add soft target
+				-- self.dataset =
+			end
 			--reset learning rate
 			self.learningRate = 0.05
 			self.terminal = true

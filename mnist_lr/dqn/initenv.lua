@@ -117,7 +117,7 @@ function setup(_opt)
     --assert(framework)
 
     --local gameEnv = framework.GameEnvironment(opt)
-	local gameEnv = cnnGameEnv()
+	local gameEnv = cnnGameEnv(opt)
     local gameActions = gameEnv:getActions()
 	--print ("gameActions are:")
 	--[[for k,v in ipairs(gameActions) do

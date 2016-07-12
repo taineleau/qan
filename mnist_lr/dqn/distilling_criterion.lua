@@ -6,10 +6,10 @@ this code is modified from: https://github.com/natoromano/specialistnets
 
 ]]--
 
-local DarkKnowledgeCriterion, parent = torch.class('DarkKnowledgeCriterion',
+local DistillingCriterion, parent = torch.class('DistillingCriterion',
                                                    'nn.Criterion')
 
-function DarkKnowledgeCriterion:__init(alpha, temp, soft_loss, verbose)
+function DistillingCriterion:__init(alpha, temp, soft_loss, verbose)
     -- alpha: soft cross-entropy weight
     -- temp: temperature
     -- soft_loss: 'KL', 'MSE' or 'L1'
@@ -32,7 +32,7 @@ function DarkKnowledgeCriterion:__init(alpha, temp, soft_loss, verbose)
     end
 end
 
-function DarkKnowledgeCriterion:updateOutput(input, target)
+function DistillingCriterio:updateOutput(input, target)
     -- input: raw scores from the model
     -- target.labels = ground truth labels
     -- target.scores = raw scores from the master
@@ -65,7 +65,7 @@ function DarkKnowledgeCriterion:updateOutput(input, target)
     return self.output
 end
 
-function DarkKnowledgeCriterion:updateGradInput(input, target)
+function DistillingCriterion:updateGradInput(input, target)
     self.mask = target.labels:eq(0)
     local soft_target = self.sm:forward(target.scores:div(self.temp)):clone()
     if self.soft_loss == 'KL' then

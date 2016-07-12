@@ -1,4 +1,4 @@
-#/bin/bash
+#!/bin/bash
 
 DQN="\"/mnt/ramdisk/save/DQN\""
 ATARI="\"convnet_atari3\""

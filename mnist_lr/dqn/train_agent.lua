@@ -43,12 +43,14 @@ cmd:option('-verbose', 2,
            'the higher the level, the more information is printed to screen')
 cmd:option('-threads', 1, 'number of BLAS threads')
 cmd:option('-gpu', -1, 'gpu flag')
-cmd:option('-distilling_on', 0, 'use distilling or not')
+cmd:option('-distilling_on', false, 'use distilling or not')
 
 cmd:text()
 
 local opt = cmd:parse(arg)
 
+
+print(opt)
 --- General setup.
 local game_env, game_actions, agent, opt = setup(opt)
 
@@ -86,9 +88,7 @@ local win = nil
 local stepnum= 1000000 --171600 --62600000 --62600000=1000games --358800--11700000 --opt.steps
 while step < stepnum do
     step = step + 1
-	if step % 10 == 0 then
-		print('--------------------------------------------------------')
-	end
+	print('--------------------------------------------------------')
 	local action_index 
 	if step < 800000 then
 		action_index = agent:perceive(reward, screen, terminal)
@@ -112,7 +112,7 @@ while step < stepnum do
     end
 
 
-    if step%1000 == 0 then collectgarbage() end
+    if step % 1000 == 0 then collectgarbage() end
 	
 	-- Test begin  
     if step % opt.eval_freq == 0 and step > learn_start then
@@ -173,7 +173,7 @@ while step < stepnum do
         reward_counts[ind] = nrewards
         episode_counts[ind] = nepisodes
 
-        time_history[ind+1] = sys.clock() - start_time
+        time_history[ind + 1] = sys.clock() - start_time
 
         local time_dif = time_history[ind+1] - time_history[ind]
 
