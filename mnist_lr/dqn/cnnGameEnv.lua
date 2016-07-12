@@ -3,15 +3,16 @@ require 'cutorch'
 require 'dataset-mnist'
 require 'optim'
 require 'distilling_criterion'
+
 local cnnGameEnv = torch.class('cnnGameEnv')
 
 function cnnGameEnv:__init(opt)
 	print(opt)
 	self.base = '../save/'
-	function check(name)
-		local f = io.open(name, "r")
-		if f ~= nil then io.close(f) return true else return false end
-	end
+--	function check(name)
+--		local f = io.open(name, "r")
+--		if f ~= nil then io.close(f) return true else return false end
+--	end
 	print('init gameenv')
 	torch.manualSeed(os.time())
 	torch.setdefaulttensortype('torch.FloatTensor')
@@ -21,12 +22,12 @@ function cnnGameEnv:__init(opt)
     self.criterion = nn.ClassNLLCriterion():cuda()
     self.trsize = 60000
     self.tesize = 10000
-    geometry = {32, 32}
+    local geometry = {32, 32}
     self.trainData = mnist.loadTrainSet(self.trsize, geometry)
     self.trainData:normalizeGlobal(mean, std)
     self.testData = mnist.loadTestSet(self.tesize, geometry)
     self.testData:normalizeGlobal(mean, std)
-    self.classes = {'1','2','3','4','5','6','7','8','9','10'}
+    self.classes = {'1', '2', '3', '4', '5', '6', '7', '8', '9', '10'}
     self.confusion = optim.ConfusionMatrix(self.classes)
     self.batchsize = 64
     self.total_batch_number = math.ceil(self.trsize/self.batchsize)  --mini-batch number in one epoch
@@ -47,7 +48,11 @@ function cnnGameEnv:__init(opt)
 	self.terminal = false  --whether a episode game stop
     self.datapointer = 1  --serve as a pointer, scan all the training data in one iteration.
 	self.max_epoch = 20
-	self.distilling_on = opt.distilling_on
+	if opt.distilling_on then
+        self.softDataset:copy(self.trainData)
+        self.soft_criterion = nn.DistillingCriterion():cuda()
+    end
+
 end
 
 function cnnGameEnv:create_mlp_model()
@@ -70,7 +75,8 @@ function cnnGameEnv:create_mlp_model()
 end
 
 function cnnGameEnv:train()
-	--The training process is modified from [https://github.com/torch/demos/blob/master/train-a-digit-classifier/train-on-mnist.lua]
+	-- The training process is modified from
+    -- [https://github.com/torch/demos/blob/master/train-a-digit-classifier/train-on-mnist.lua]
     local dataset = self.trainData
     -- epoch tracker
     self.batchindex = self.batchindex or 1
@@ -97,6 +103,7 @@ function cnnGameEnv:train()
         end
         self.gradParameters:zero()
         local output = self.model:forward(inputs)
+        print(output)
         local err = self.criterion:forward(output, targets)
         local df_do = self.criterion:backward(output, targets)
         self.model:backward(inputs, df_do)
@@ -104,10 +111,10 @@ function cnnGameEnv:train()
             self.confusion:add(output[i], targets[i])
         end
         self.err = err
-        return f,self.gradParameters
+        return f, self.gradParameters
     end
     -- optimize on current mini-batch
-    config = config or {learningRate = self.learningRate,
+    local config = config or {learningRate = self.learningRate,
                   momentum = self.momentum,
                   learningRateDecay = 5e-7}
     optim.sgd(feval, self.parameters, config)
@@ -118,12 +125,47 @@ function cnnGameEnv:train()
     return trainAccuracy, trainError
 end
 
+function cnnGameEnv:getDistillingLabel()
+    print("Time to get soft label now!")
+    local dataset = self.trainData
+    -- epoch tracker
+    self.batchindex = self.batchindex or 1
+    -- do one mini-batch
+    local getMiniBatchLabel = function(x)
+        local bsize = math.min(self.batchsize, dataset:size() - self.datapointer + 1)
+        local inputs = torch.CudaTensor(bsize, self.channel, 32, 32)
+        -- getsoftLabel
+        local output = self.model:forward(inputs)
+    end
+    local soft_label = {}
+    local bsize = math.min(self.batchsize, dataset:size()-self.datapointer + 1)
+    local inputs = torch.CudaTensor(bsize, self.channel, 32, 32)
+    local targets = torch.CudaTensor(bsize)
+    for i = 1, bsize do
+        local idx = self.datapointer
+        local sample = dataset[idx]
+        local input = sample[1]:clone()
+        local _, target = sample[2]:clone():max(1)
+        target = target:squeeze()
+        inputs[i] = input
+        targets[i] = target
+        self.datapointer = self.datapointer + 1
+    end
+    for i = 1, self.total_batch_number do
+
+        self.datapointer = i
+        soft_label[i] = getMiniBatchLabel()
+    end
+    return soft_label
+end
+
 function cnnGameEnv:test()
-	--The testing process is also modified from [https://github.com/torch/demos/blob/master/train-a-digit-classifier/train-on-mnist.lua]
+	--The testing process is also modified from
+    -- [https://github.com/torch/demos/blob/master/train-a-digit-classifier/train-on-mnist.lua]
     local dataset = self.testData
     local testError = 0
     print('<trainer> on testing Set:')
-    for t = 1,self.tesize do
+    for t = 1, self.tesize do
        -- disp progress
        xlua.progress(t, self.tesize)
        -- get new sample
@@ -171,7 +213,7 @@ function cnnGameEnv:regression(targets, weights, layernum)
 --    local regressweights = torch.CudaTensor(10, 256)
     local reg_data = torch.CudaTensor(input_neural_number, output_neural_number):fill(1)
     -- https://github.com/torch/nn/blob/master/doc/simple.md#nn.CMul
-    reg_model = nn.Sequential()
+    local reg_model = nn.Sequential()
     reg_model:add(nn.CMul(output_neural_number))
 	reg_model:cuda()
     -- how to set weights into reg_model? set in line 156
@@ -222,18 +264,13 @@ end
 
 function cnnGameEnv:getState(verbose) --state is set in cnn.lua
 	verbose = verbose or false
-	--return state, reward, term
+	--return state, reward, terminal
 	local tstate = self.model:get(1).weight 
 	local size = tstate:size()[1] * tstate:size()[2]  
 	print(size)
     local filter = self.filter
 	local reward = self:reward(verbose, filter, tstate)
-	if self.terminal == true then
-		self.terminal = false
-		return tstate, reward, true
-	else
-		return tstate, reward, false
-	end	
+    return tstate, reward, self.terminal
 end
 
 function cnnGameEnv:step(action, tof)
@@ -257,7 +294,7 @@ function cnnGameEnv:step(action, tof)
     --end
 
     print('<trainer> on training set:' .. 'epoch #' .. self.epoch .. ', batchindex ' .. self.batchindex)
-    trainAcc, trainErr = self:train()
+    local trainAcc, trainErr = self:train()
     self.trainAcc = self.trainAcc or 0
     self.trainAcc = self.trainAcc + trainAcc
 	print('batchindex = '.. self.batchindex)
@@ -280,7 +317,7 @@ function cnnGameEnv:step(action, tof)
         print ('trainAcc = ' .. self.trainAcc)
         os.execute('echo ' .. self.trainAcc .. ' >> logs/' .. outputtrain)
         self.trainAcc = 0
-        testAcc,  testErr = self:test()
+        local testAcc,  testErr = self:test()
         os.execute('echo ' .. testAcc .. ' >> logs/' .. outputtest)
         self.batchindex = 1 --reset the batch pointer
         self.epoch = self.epoch + 1
@@ -288,7 +325,7 @@ function cnnGameEnv:step(action, tof)
         if self.epoch > 0 and self.epoch % self.max_epoch == 0 then
 			if self.epoch == 1 and self.distilling_on then
 				-- TODO: add soft target
-				-- self.dataset =
+				self:getDistillingLabel()
 			end
 			--reset learning rate
 			self.learningRate = 0.05

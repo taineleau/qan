@@ -85,7 +85,7 @@ screen, reward, terminal = game_env:getState(true)
 --
 --print("Iteration ..", step)
 local win = nil
-local stepnum= 1000000 --171600 --62600000 --62600000=1000games --358800--11700000 --opt.steps
+local stepnum = 1000000 --171600 --62600000 --62600000=1000games --358800--11700000 --opt.steps
 while step < stepnum do
     step = step + 1
 	print('--------------------------------------------------------')
@@ -134,7 +134,7 @@ while step < stepnum do
             -- display screen
             --win = image.display({image=screen, win=win})
 
-            if estep%1000 == 0 then collectgarbage() end
+            if estep % 1000 == 0 then collectgarbage() end
 
             -- record every reward
             episode_reward = episode_reward + reward

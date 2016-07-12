@@ -32,7 +32,7 @@ function DistillingCriterion:__init(alpha, temp, soft_loss, verbose)
     end
 end
 
-function DistillingCriterio:updateOutput(input, target)
+function DistillingCriterion:updateOutput(input, target)
     -- input: raw scores from the model
     -- target.labels = ground truth labels
     -- target.scores = raw scores from the master
