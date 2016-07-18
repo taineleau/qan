@@ -70,7 +70,7 @@ function cnnGameEnv:create_mlp_model()
     model:add(nn.Linear(64*2*2, 200))
     model:add(nn.Tanh())
     model:add(nn.Linear(200, 10))
-    model:add(nn.LogSoftMax())
+    -- model:add(nn.LogSoftMax())
     return model
 end
 
@@ -91,6 +91,7 @@ function cnnGameEnv:train()
         local input = sample[1]:clone()
         local _, target = sample[2]:clone():max(1)
         target = target:squeeze()
+        -- after squeeze, it become a scalar label
         inputs[i] = input
         targets[i] = target
         self.datapointer = self.datapointer + 1
@@ -103,8 +104,9 @@ function cnnGameEnv:train()
         end
         self.gradParameters:zero()
         local output = self.model:forward(inputs)
-        print(output)
-        local err = self.criterion:forward(output, targets)
+        local output_l = torch.exp(output)
+        print("model output:", output_l)
+        local err, twt = self.criterion:forward(output, targets)
         local df_do = self.criterion:backward(output, targets)
         self.model:backward(inputs, df_do)
         for i = 1, bsize do
@@ -152,10 +154,10 @@ function cnnGameEnv:getDistillingLabel()
         self.datapointer = self.datapointer + 1
     end
     for i = 1, self.total_batch_number do
-
         self.datapointer = i
         soft_label[i] = getMiniBatchLabel()
     end
+    self.soft_label = soft_label
     return soft_label
 end
 
@@ -190,6 +192,7 @@ function cnnGameEnv:test()
 end
 
 function cnnGameEnv:regression(targets, weights, layernum)
+    local input_neural_number, output_neural_number
 	if layernum == 1 then 
 		input_neural_number = 32
 		output_neural_number = 25
@@ -231,7 +234,7 @@ function cnnGameEnv:regression(targets, weights, layernum)
 		reg_model:get(1).weight:copy(weights[i])
         -- do 3 iterations of regression
         for j = 1, 3 do
-            err = regGradUpdate(reg_model, reg_data[i], targets[i], nn.MSECriterion():cuda(), 0.01)
+            local err = regGradUpdate(reg_model, reg_data[i], targets[i], nn.MSECriterion():cuda(), 0.01)
         end
 		weights[i]:copy(reg_model:get(1).weight)
     end
