@@ -52,13 +52,14 @@ function cnnGameEnv:__init(opt)
     self.datapointer = 1  --serve as a pointer, scan all the training data in one iteration.
 	self.max_epoch = 20
 	if opt.distilling_on == 1 then
-        self.distilling_on = true
         print("distilling configuring here..")
+        self.distilling_start_epoch = 0
+        self.distilling_on = true
         self.softDataset = self.trainData
-        self.soft_criterion = DistillingCriterion()
         self.temp = opt.temp -- distilling temperature
-        self.soft_label = {}
         self.sm = nn.SoftMax():cuda()
+        self.soft_criterion = DistillingCriterion(0.9, opt.temp, 'L2')
+        --DistillingCriterion.__init(0.9, opt.temp, 'L2')
     end
 
 end
@@ -106,8 +107,15 @@ function cnnGameEnv:train()
         self.datapointer = self.datapointer + 1
     end
 
-    if self.distilling_on and self.epoch > 1 then
-        targets = { soft_target = self.soft_label[self.batchindex], label = targets}
+    if self.distilling_on and self.epoch >= self.distilling_start_epoch then
+        if self.soft_label == nil then
+            self.soft_label = torch.load(self.base .. 'soft_label.t7')
+            print("load soft_label", self.soft_label[1])
+            for i = 1, 938 do
+                self.soft_label[i] = self.soft_label[i]:cuda()
+            end
+        end
+        targets = { soft_target = self.soft_label[self.batchindex], labels = targets}
     end
 
     -- create closure to evaluate f(X) and df/dX
@@ -120,7 +128,7 @@ function cnnGameEnv:train()
         local err, df_do
         local output = self.model:forward(inputs)
         -- print("linear output: ", output)
-        if self.distilling_on and self.epoch > 1 then
+        if self.distilling_on and self.epoch >= self.distilling_start_epoch then
             print("using soft criterion. ")
             err = self.soft_criterion:forward(output, targets)
             df_do = self.soft_criterion:backward(output, targets)
@@ -131,7 +139,7 @@ function cnnGameEnv:train()
         end
         self.model:backward(inputs, df_do)
         for i = 1, bsize do
-            self.confusion:add(output[i], targets[i])
+            self.confusion:add(output[i], targets.labels[i])
         end
         self.err = err
         return f, self.gradParameters
