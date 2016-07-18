@@ -53,7 +53,7 @@ function cnnGameEnv:__init(opt)
         print("distilling configuring here..")
         -- self.softDataset =self.trainData)
         -- self.soft_criterion = nn.DistillingCriterion():cuda()
-        self.temp = opt.temperature -- distilling temperature
+        self.temp = opt.temp -- distilling temperature
         self.soft_label = {}
         self.sm = nn.SoftMax():cuda()
     end
@@ -156,8 +156,9 @@ function cnnGameEnv:getDistillingLabel()
         local output = self.model:forward(inputs)
         --print("output here: ", output)
         --print("twt: ", twt)
-        output = self.sm:forward(output):clone()-- temperature
-        print("return output")
+        -- print("distilling temperature: ", self.temp)
+        output = self.sm:forward(output / self.temp):clone()-- temperature
+        --print("return output")
         return output
     end
     local soft_label = {}
