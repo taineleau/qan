@@ -19,7 +19,8 @@ function cnnGameEnv:__init(opt)
     self.model = self:create_mlp_model()
     self.model:cuda()
     self.parameters, self.gradParameters = self.model:getParameters()
-    self.criterion = nn.ClassNLLCriterion():cuda()
+    self.criterion = nn.CrossEntropyCriterion():cuda()
+    -- self.criterion = nn.ClassNLLCriterion():cuda()
     self.trsize = 60000
     self.tesize = 10000
     local geometry = {32, 32}
@@ -48,9 +49,13 @@ function cnnGameEnv:__init(opt)
 	self.terminal = false  --whether a episode game stop
     self.datapointer = 1  --serve as a pointer, scan all the training data in one iteration.
 	self.max_epoch = 20
-	if opt.distilling_on then
-        self.softDataset:copy(self.trainData)
-        self.soft_criterion = nn.DistillingCriterion():cuda()
+	if opt.distilling_on == 1 then
+        print("distilling configuring here..")
+        -- self.softDataset =self.trainData)
+        -- self.soft_criterion = nn.DistillingCriterion():cuda()
+        self.temp = opt.temperature -- distilling temperature
+        self.soft_label = {}
+        self.sm = nn.SoftMax():cuda()
     end
 
 end
@@ -104,9 +109,8 @@ function cnnGameEnv:train()
         end
         self.gradParameters:zero()
         local output = self.model:forward(inputs)
-        local output_l = torch.exp(output)
-        print("model output:", output_l)
-        local err, twt = self.criterion:forward(output, targets)
+        -- print("linear output: ", output)
+        local err = self.criterion:forward(output, targets)
         local df_do = self.criterion:backward(output, targets)
         self.model:backward(inputs, df_do)
         for i = 1, bsize do
@@ -134,30 +138,35 @@ function cnnGameEnv:getDistillingLabel()
     self.batchindex = self.batchindex or 1
     -- do one mini-batch
     local getMiniBatchLabel = function(x)
-        local bsize = math.min(self.batchsize, dataset:size() - self.datapointer + 1)
+        print("getMiniBatchLabel!")
+        local bsize = math.min(self.batchsize, dataset:size()-self.datapointer + 1)
         local inputs = torch.CudaTensor(bsize, self.channel, 32, 32)
+        local targets = torch.CudaTensor(bsize)
+        for i = 1, bsize do
+            local idx = self.datapointer
+            local sample = dataset[idx]
+            local input = sample[1]:clone()
+            -- local _, target = sample[2]:clone():max(1)
+            -- target = target:squeeze()
+            inputs[i] = input
+            -- targets[i] = target
+            self.datapointer = self.datapointer + 1
+        end
         -- getsoftLabel
         local output = self.model:forward(inputs)
+        --print("output here: ", output)
+        --print("twt: ", twt)
+        output = self.sm:forward(output):clone()-- temperature
+        print("return output")
+        return output
     end
     local soft_label = {}
-    local bsize = math.min(self.batchsize, dataset:size()-self.datapointer + 1)
-    local inputs = torch.CudaTensor(bsize, self.channel, 32, 32)
-    local targets = torch.CudaTensor(bsize)
-    for i = 1, bsize do
-        local idx = self.datapointer
-        local sample = dataset[idx]
-        local input = sample[1]:clone()
-        local _, target = sample[2]:clone():max(1)
-        target = target:squeeze()
-        inputs[i] = input
-        targets[i] = target
-        self.datapointer = self.datapointer + 1
-    end
+
     for i = 1, self.total_batch_number do
-        self.datapointer = i
-        soft_label[i] = getMiniBatchLabel()
+        soft_label[i] = getMiniBatchLabel():clone()
     end
     self.soft_label = soft_label
+    self.datapointer = 1 -- reset datapointer
     return soft_label
 end
 
@@ -181,7 +190,7 @@ function cnnGameEnv:test()
 	   print(target)
        self.confusion:add(pred:view(10), target)
        -- compute error
-       err = self.criterion:forward(pred, target)
+       local err = self.criterion:forward(pred, target)
        testError = testError + err
     end
     -- print confusion matrix
@@ -314,6 +323,11 @@ function cnnGameEnv:step(action, tof)
 		--self:regression(self.w4, w4, 4)
     end
 
+    if self.datapointer > 5 * self.batchsize then
+        local res = self:getDistillingLabel()
+        print("result of distilling: ", res)
+    end
+
     if self.batchindex == self.total_batch_number then
         self.datapointer = 1 --reset the pointer
         self.trainAcc = self.trainAcc / self.total_batch_number
@@ -325,6 +339,7 @@ function cnnGameEnv:step(action, tof)
         self.batchindex = 1 --reset the batch pointer
         self.epoch = self.epoch + 1
         print('epoch = ' .. self.epoch)
+
         if self.epoch > 0 and self.epoch % self.max_epoch == 0 then
 			if self.epoch == 1 and self.distilling_on then
 				-- TODO: add soft target

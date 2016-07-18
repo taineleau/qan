@@ -43,7 +43,8 @@ cmd:option('-verbose', 2,
            'the higher the level, the more information is printed to screen')
 cmd:option('-threads', 1, 'number of BLAS threads')
 cmd:option('-gpu', -1, 'gpu flag')
-cmd:option('-distilling_on', false, 'use distilling or not')
+cmd:option('-distilling_on', 0, 'use distilling or not')
+cmd:option('-temp', 1, 'distilling temperature')
 
 cmd:text()
 
@@ -86,8 +87,6 @@ screen, reward, terminal = game_env:getState(true)
 --print("Iteration ..", step)
 local win = nil
 local stepnum = 1000000 --171600 --62600000 --62600000=1000games --358800--11700000 --opt.steps
-
-local screen, reward, terminal
 
 while step < stepnum do
     step = step + 1
