@@ -19,13 +19,14 @@ function DistillingCriterion:__init(alpha, temp, soft_loss, verbose)
     self.soft_loss = soft_loss or 'KL'
     self.supervised = (self.alpha < 1.0)
     self.verbose = verbose or false
-    self.sm = nn.SoftMax()
-    self.lsm = nn.LogSoftMax()
-    self.ce_crit = nn.CrossEntropyCriterion()
+    self.sm = nn.SoftMax():cuda()
+    self.lsm = nn.LogSoftMax():cuda()
+    self.ce_crit = nn.CrossEntropyCriterion():cuda()
     if self.soft_loss == 'KL' then
-        self.kl_crit = nn.DistKLDivCriterion()
+        self.kl_crit = nn.DistKLDivCriterion():cuda()
     elseif self.soft_loss == 'L2' then
-        self.mse_crit = nn.MSECriterion()
+        print("choose L2.")
+        self.mse_crit = nn.MSECriterion():cuda()
         self.mse_crit.sizeAverage = false
     else
         error('Invalid input as soft_loss')
@@ -36,7 +37,10 @@ function DistillingCriterion:updateOutput(input, target)
     -- input: raw scores from the model
     -- target.labels = ground truth labels
     -- target.scores = raw scores from the master
-    local soft_target = self.sm:forward(target.scores / self.temp):clone()
+    -- local soft_target = self.sm:forward(target.scores / self.temp):clone()
+    local soft_target = target.soft_target
+    print("input", input)
+    print("soft_target", soft_target)
     if self.soft_loss == 'KL' then
       local log_probs = self.lsm:forward(input / self.temp)
       if self.supervised then
@@ -67,7 +71,8 @@ end
 
 function DistillingCriterion:updateGradInput(input, target)
     self.mask = target.labels:eq(0)
-    local soft_target = self.sm:forward(target.scores:div(self.temp)):clone()
+    -- local soft_target = self.sm:forward(target.scores:div(self.temp)):clone()
+    local soft_target = target.soft_target
     if self.soft_loss == 'KL' then
       local log_probs = self.lsm:forward(input / self.temp)
       if self.supervised then
