@@ -92,6 +92,7 @@ function cnnGameEnv:train()
     local trainError = 0
     -- do one mini-batch
 	local bsize = math.min(self.batchsize, dataset:size()-self.datapointer + 1)
+    print("batch zise of this iteration:", bsize)
     local inputs = torch.CudaTensor(bsize, self.channel, 32, 32)
     local targets = torch.CudaTensor(bsize)
     for i = 1, bsize do
@@ -107,7 +108,7 @@ function cnnGameEnv:train()
         self.datapointer = self.datapointer + 1
     end
 
-    if self.distilling_on and self.epoch >= self.distilling_start_epoch then
+    if self.distilling_on and self.distilling_start == 1 then
         if self.soft_label == nil then
             self.soft_label = torch.load(self.base .. 'soft_label.t7')
             print("load soft_label", self.soft_label[1])
@@ -116,6 +117,7 @@ function cnnGameEnv:train()
             end
         end
         targets = { soft_target = self.soft_label[self.batchindex], labels = targets}
+        -- DistillingCriterion targets format: {soft_target, labels}
     end
 
     -- create closure to evaluate f(X) and df/dX
@@ -127,8 +129,8 @@ function cnnGameEnv:train()
         self.gradParameters:zero()
         local err, df_do
         local output = self.model:forward(inputs)
-        -- print("linear output: ", output)
-        if self.distilling_on and self.epoch >= self.distilling_start_epoch then
+        print("self.distilling: ", self.distilling_on, self.distilling_start)
+        if self.distilling_on and self.distilling_start == 1 then
             print("using soft criterion. ")
             err = self.soft_criterion:forward(output, targets)
             df_do = self.soft_criterion:backward(output, targets)
@@ -139,7 +141,11 @@ function cnnGameEnv:train()
         end
         self.model:backward(inputs, df_do)
         for i = 1, bsize do
-            self.confusion:add(output[i], targets.labels[i])
+            if self.distilling_on and self.distilling_start ~= nil then
+                self.confusion:add(output[i], targets.labels[i])
+            else
+                self.confusion:add(output[i], targets[i])
+            end
         end
         self.err = err
         return f, self.gradParameters
@@ -197,7 +203,7 @@ function cnnGameEnv:getDistillingLabel()
 
     torch.save( self.base .. 'soft_label.t7', soft_label)
 
-    sys.sleep(100)
+    sys.sleep(10)
     return soft_label
 end
 
@@ -362,6 +368,13 @@ function cnnGameEnv:step(action, tof)
 --        print("result of distilling: ", res)
 --    end
 
+--    if self.distilling_on and self.distilling_start == nil then
+--        self.distilling_start = 1
+--        self.soft_label = torch.load(self.base .. 'soft_label.t7')
+--        print("Load soft_label success!")
+--        sys.sleep(10)
+--    end
+
     if self.batchindex == self.total_batch_number then
         self.datapointer = 1 --reset the pointer
         self.trainAcc = self.trainAcc / self.total_batch_number
@@ -373,20 +386,21 @@ function cnnGameEnv:step(action, tof)
         self.batchindex = 1 --reset the batch pointer
         self.epoch = self.epoch + 1
         print('epoch = ' .. self.epoch)
-        sys.sleep(10)
+        sys.sleep(20)
 
-        if self.epoch == 0 and self.distilling_on then
-            self.soft_label = torch.load(self.base .. 'soft_label.t7')
-            print("Load soft_label success!")
-            sys.sleep(1)
-        end
+
 --        if self.epoch == 1 and self.distilling_on then
 --            -- TODO: add soft target
 --            self:getDistillingLabel()
 --        end
 
         if self.epoch > 0 and self.epoch % self.max_epoch == 0 then
-			--reset learning rate
+            -- start distilling
+            if self.distilling_start == nil then
+                self.distilling_start = 1
+                self:getDistillingLabel()
+            end
+            --reset learning rate
 			self.learningRate = 0.05
 			self.terminal = true
             --reset model

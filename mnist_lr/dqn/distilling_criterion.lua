@@ -41,6 +41,7 @@ function DistillingCriterion:updateOutput(input, target)
     local soft_target = target.soft_target
     print("input", input)
     print("soft_target", soft_target)
+    --print("labels:\n", target.labels)
     if self.soft_loss == 'KL' then
       local log_probs = self.lsm:forward(input / self.temp)
       if self.supervised then
@@ -59,6 +60,7 @@ function DistillingCriterion:updateOutput(input, target)
     else
       local probs = self.sm:forward(input / self.temp)
       if self.supervised then
+          print("soft~~~~", target.labels)
           self.output = self.ce_crit:forward(input, target.labels)
           self.output = self.output * (1 - self.alpha) + 
               self.mse_crit:forward(probs, soft_target) * self.alpha

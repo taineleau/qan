@@ -1,5 +1,6 @@
 require 'torch'
 require 'paths'
+require 'sys'
 
 mnist = {}
 
@@ -38,7 +39,9 @@ function mnist.loadDataset(fileName, maxLoad)
    end
    data = data[{{1,nExample},{},{},{}}]
    labels = labels[{{1,nExample}}]
-   print('<mnist> done')
+   print('<mnist> done, load' .. nExample ..'example\n')
+
+   sys.sleep(20)
 
    local dataset = {}
    dataset.data = data
