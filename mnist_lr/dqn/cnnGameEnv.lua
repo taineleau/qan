@@ -33,7 +33,7 @@ function cnnGameEnv:__init(opt)
     self.classes = {'1', '2', '3', '4', '5', '6', '7', '8', '9', '10'}
     self.confusion = optim.ConfusionMatrix(self.classes)
     self.batchsize = 64
-    self.total_batch_number = math.ceil(self.trsize / self.batchsize)  --mini-batch number in one epoch
+    self.total_batch_number = math.ceil(self.trsize / self.batchsize) - 1 --mini-batch number in one epoch
     self.learningRate = 0.05  --init learning rate
     self.weightDecay = 0
     self.momentum = 0
@@ -342,8 +342,6 @@ function cnnGameEnv:step(action, tof)
     --    self.learningRate = math.max(self.learningRate - delta, minlr);
     --end
 
-    --sys.sleep(10)
- --   torch.save('../save/soft_labelago.t7', delta)
 
     print('<trainer> on training set:' .. 'epoch #' .. self.epoch .. ', batchindex ' .. self.batchindex)
     local trainAcc, trainErr = self:train()

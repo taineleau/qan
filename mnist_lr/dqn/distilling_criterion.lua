@@ -40,7 +40,10 @@ function DistillingCriterion:updateOutput(input, target)
     -- local soft_target = self.sm:forward(target.scores / self.temp):clone()
     local soft_target = target.soft_target
     print("input", input)
-    print("soft_target", soft_target)
+--    print("soft_target", soft_target)
+--    if soft_target.size()[1] != input.size()[1] then
+--        soft_target.reshape(soft_target, input.size()[1], soft_target.size()[2])
+--    end
     --print("labels:\n", target.labels)
     if self.soft_loss == 'KL' then
       local log_probs = self.lsm:forward(input / self.temp)
