@@ -44,6 +44,7 @@ function cnnGameEnv:__init(opt)
 	self.w4 = torch.load(self.base..'cnnfilter4.t7')
     self.finalerr = 0.0001 
     self.epoch = 0
+    self.episode = 0
     self.batchindex = 1  --train batch by batch
     self.channel = 1
     self.err = 2.5  --start error
@@ -59,7 +60,8 @@ function cnnGameEnv:__init(opt)
         self.temp = opt.temp -- distilling temperature
         self.sm = nn.SoftMax():cuda()
         self.soft_criterion = DistillingCriterion(0.9, opt.temp, 'L2')
-        --DistillingCriterion.__init(0.9, opt.temp, 'L2')
+        -- read from previously saved log or not
+        self.history = true
     end
 
 end
@@ -333,8 +335,6 @@ function cnnGameEnv:step(action, tof)
 	local delta = 0.005
 	local minlr = 0.005
 	local maxlr = 1.0
-	local outputtrain = 'train_lr_baseline1.log'--'basetrain.log'--'baseline_raw_train.log'
-	local outputtest = 'test_lr_baseline1.log'--'basetest.log'--'baseline_raw_test.log'
 
     --if (action == 1) then 
     --    self.learningRate = math.min(self.learningRate + delta, maxlr);
@@ -351,14 +351,14 @@ function cnnGameEnv:step(action, tof)
 	print('totalbatchindex = '.. self.total_batch_number)
 
     if self.epoch % self.max_epoch <= 5 then   --let cnn train freely after 5 epoches.
-		--local w1 = self.model:get(1).weight
-		--local w2 = self.model:get(4).weight
-		--local w3 = self.model:get(8).weight
-		--local w4 = self.model:get(10).weight
-		--self:regression(self.w1, w1, 1)
-		--self:regression(self.w2, w2, 2)
-		--self:regression(self.w3, w3, 3)
-		--self:regression(self.w4, w4, 4)
+		local w1 = self.model:get(1).weight
+		local w2 = self.model:get(4).weight
+		local w3 = self.model:get(8).weight
+		local w4 = self.model:get(10).weight
+		self:regression(self.w1, w1, 1)
+		self:regression(self.w2, w2, 2)
+		self:regression(self.w3, w3, 3)
+		self:regression(self.w4, w4, 4)
     end
 --    -- test get_label
 --    if self.datapointer > 5 * self.batchsize then
@@ -366,17 +366,22 @@ function cnnGameEnv:step(action, tof)
 --        print("result of distilling: ", res)
 --    end
 
---    if self.distilling_on and self.distilling_start == nil then
---        self.distilling_start = 1
---        self.soft_label = torch.load(self.base .. 'soft_label.t7')
---        print("Load soft_label success!")
---        sys.sleep(10)
---    end
+    if self.distilling_on and self.history and self.distilling_start == nil then
+        self.distilling_start = 1
+        self.soft_label = torch.load(self.base .. 'soft_label.t7')
+        print("Load soft_label success!")
+        sys.sleep(5)
+    end
 
     if self.batchindex == self.total_batch_number then
         self.datapointer = 1 --reset the pointer
         self.trainAcc = self.trainAcc / self.total_batch_number
         print ('trainAcc = ' .. self.trainAcc)
+--        if self.epoch % self.max_epoch == 0 then
+--            self.episode = self.episode + 1
+--        end
+        local outputtrain = 'train_lr_' .. self.episode .. '.log'--'basetrain.log'--'baseline_raw_train.log'
+        local outputtest = 'test_lr_' .. self.episode .. '.log'--'basetest.log'--'baseline_raw_test.log'
         os.execute('echo ' .. self.trainAcc .. ' >> logs/' .. outputtrain)
         self.trainAcc = 0
         local testAcc,  testErr = self:test()
@@ -384,13 +389,7 @@ function cnnGameEnv:step(action, tof)
         self.batchindex = 1 --reset the batch pointer
         self.epoch = self.epoch + 1
         print('epoch = ' .. self.epoch)
-        sys.sleep(20)
-
-
---        if self.epoch == 1 and self.distilling_on then
---            -- TODO: add soft target
---            self:getDistillingLabel()
---        end
+        sys.sleep(4)
 
         if self.epoch > 0 and self.epoch % self.max_epoch == 0 then
             -- start distilling
