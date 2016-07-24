@@ -59,7 +59,7 @@ function cnnGameEnv:__init(opt)
         self.softDataset = self.trainData
         self.temp = opt.temp -- distilling temperature
         self.sm = nn.SoftMax():cuda()
-        self.soft_criterion = DistillingCriterion(0.9, opt.temp, 'L2')
+        self.soft_criterion = DistillingCriterion(0.2, opt.temp, 'L2')
         -- read from previously saved log or not
         self.history = true
     end
@@ -84,6 +84,8 @@ function cnnGameEnv:create_mlp_model()
     -- model:add(nn.LogSoftMax())
     return model
 end
+
+cnt_not_match = 0
 
 function cnnGameEnv:train()
 	-- The training process is modified from
@@ -118,7 +120,21 @@ function cnnGameEnv:train()
                 self.soft_label[i] = self.soft_label[i]:cuda()
             end
         end
-        targets = { soft_target = self.soft_label[self.batchindex], labels = targets}
+        targets = { soft_target = self.soft_label[self.batchindex], labels = targets }
+
+
+        -- test here! TODO: move to test part
+        local _, idx = torch.max(targets.soft_target, 2)
+        for i = 1, bsize do
+
+            if idx[i]:squeeze() ~= targets.labels[i] then
+                cnt_not_match = cnt_not_match + 1
+                print(idx[i])
+                print(targets.soft_target[i])
+                print(targets.labels[i])
+            end
+        end
+        print("not match!!!!!!!!!!!!!!!!!", cnt_not_match)
         -- DistillingCriterion targets format: {soft_target, labels}
     end
 
@@ -153,10 +169,10 @@ function cnnGameEnv:train()
         return f, self.gradParameters
     end
     -- optimize on current mini-batch
-    local config = config or {learningRate = self.learningRate,
+    self.config = self.config or {learningRate = self.learningRate,
                   momentum = self.momentum,
                   learningRateDecay = 5e-7}
-    optim.sgd(feval, self.parameters, config)
+    optim.sgd(feval, self.parameters, self.config)
     print (self.confusion)
     local trainAccuracy = self.confusion.totalValid * 100 
     print(trainAccuracy)
@@ -330,7 +346,7 @@ function cnnGameEnv:step(action, tof)
 	--[[
 		action 1: increase
 		action 2: decrease
-		action 3: unchanged	
+		action 3: unchanged	ca
 	]]
 	local delta = 0.005
 	local minlr = 0.005
@@ -380,8 +396,8 @@ function cnnGameEnv:step(action, tof)
 --        if self.epoch % self.max_epoch == 0 then
 --            self.episode = self.episode + 1
 --        end
-        local outputtrain = 'train_lr_' .. self.episode .. '.log'--'basetrain.log'--'baseline_raw_train.log'
-        local outputtest = 'test_lr_' .. self.episode .. '.log'--'basetest.log'--'baseline_raw_test.log'
+        local outputtrain = 'train_lr_2' .. self.episode .. '.log'--'basetrain.log'--'baseline_raw_train.log'
+        local outputtest = 'test_lr_2' .. self.episode .. '.log'--'basetest.log'--'baseline_raw_test.log'
         os.execute('echo ' .. self.trainAcc .. ' >> logs/' .. outputtrain)
         self.trainAcc = 0
         local testAcc,  testErr = self:test()

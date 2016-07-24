@@ -39,7 +39,9 @@ function DistillingCriterion:updateOutput(input, target)
     -- target.scores = raw scores from the master
     -- local soft_target = self.sm:forward(target.scores / self.temp):clone()
     local soft_target = target.soft_target
-    print("input", input)
+    -- print("input", input)
+    print("KD here!!!")
+    -- print(soft_target)
 --    print("soft_target", soft_target)
 --    if soft_target.size()[1] != input.size()[1] then
 --        soft_target.reshape(soft_target, input.size()[1], soft_target.size()[2])
@@ -63,7 +65,7 @@ function DistillingCriterion:updateOutput(input, target)
     else
       local probs = self.sm:forward(input / self.temp)
       if self.supervised then
-          print("soft~~~~", target.labels)
+          --print(target.labels)
           self.output = self.ce_crit:forward(input, target.labels)
           self.output = self.output * (1 - self.alpha) + 
               self.mse_crit:forward(probs, soft_target) * self.alpha
