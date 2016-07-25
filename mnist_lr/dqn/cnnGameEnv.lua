@@ -9,7 +9,7 @@ dofile 'distilling_criterion.lua'
 local cnnGameEnv = torch.class('cnnGameEnv')
 
 function cnnGameEnv:__init(opt)
-	print(opt)
+	print('option from cmd: \n', opt)
 	self.base = '../save/'
 --	function check(name)
 --		local f = io.open(name, "r")
@@ -18,23 +18,32 @@ function cnnGameEnv:__init(opt)
 	print('init game environment')
 	torch.manualSeed(os.time())
 	torch.setdefaulttensortype('torch.FloatTensor')
+    self.dataset = opt.dataset
     self.model = self:create_mlp_model()
     self.model:cuda()
     self.parameters, self.gradParameters = self.model:getParameters()
     self.criterion = nn.CrossEntropyCriterion():cuda()
-    -- self.criterion = nn.ClassNLLCriterion():cuda()
     self.trsize = 60000
     self.tesize = 10000
     local geometry = {32, 32}
-    self.trainData = mnist.loadTrainSet(self.trsize, geometry)
-    self.trainData:normalizeGlobal(mean, std)
-    self.testData = mnist.loadTestSet(self.tesize, geometry)
-    self.testData:normalizeGlobal(mean, std)
+    if self.dataset == 'mnist' then
+        self.trainData = mnist.loadTrainSet(self.trsize, geometry)
+        self.trainData:normalizeGlobal(mean, std)
+        self.testData = mnist.loadTestSet(self.tesize, geometry)
+        self.testData:normalizeGlobal(mean, std)
+    else
+        local provider = torch.load('../save/provider.t7')
+        --provider:normalize()
+        provider.trainData.data = provider.trainData.data:float()
+        provider.testData.data = provider.testData.data:float()
+        self.trainData = provider.trainData
+        self.testData = provider.testData
+    end
     self.classes = {'1', '2', '3', '4', '5', '6', '7', '8', '9', '10'}
     self.confusion = optim.ConfusionMatrix(self.classes)
-    self.batchsize = 64
+    self.batchsize = opt.batchsize
     self.total_batch_number = math.ceil(self.trsize / self.batchsize) - 1 --mini-batch number in one epoch
-    self.learningRate = 0.05  --init learning rate
+    self.learningRate = opt.learningRate  --init learning rate
     self.weightDecay = 0
     self.momentum = 0
 	--load filter for regression
@@ -51,36 +60,42 @@ function cnnGameEnv:__init(opt)
     self.mapping = {}
 	self.terminal = false  --whether a episode game stop
     self.datapointer = 1  --serve as a pointer, scan all the training data in one iteration.
-	self.max_epoch = 20
-	if opt.distilling_on == 1 then
+	self.max_epoch = opt.max_epoch   -- # of epoch in one episode
+	if opt.distilling_on == 1 then -- if knowledge distilling is on
         print("distilling configuring here..")
         self.distilling_start_epoch = 0
         self.distilling_on = true
         self.softDataset = self.trainData
         self.temp = opt.temp -- distilling temperature
         self.sm = nn.SoftMax():cuda()
-        self.soft_criterion = DistillingCriterion(0.2, opt.temp, 'L2')
+        self.soft_criterion = DistillingCriterion(0.1, 3, 'KL')-- DistillingCriterion(0.1, opt.temp, 'L2')
         -- read from previously saved log or not
-        self.history = true
+        self.history = true -- to load a soft_label from *.t7 or not
     end
 
 end
 
 function cnnGameEnv:create_mlp_model()
     local model = nn.Sequential()
-    -- stage 1 : mean suppresion -> filter bank -> squashing -> max pooling
-    model:add(nn.SpatialConvolutionMM(1, 32, 5, 5))
-    model:add(nn.Tanh())
-    model:add(nn.SpatialMaxPooling(3, 3, 3, 3))
-    -- stage 2 : mean suppresion -> filter bank -> squashing -> max pooling
-    model:add(nn.SpatialConvolutionMM(32, 64, 5, 5))
-    model:add(nn.Tanh())
-    model:add(nn.SpatialMaxPooling(2, 2, 2, 2))
-    -- stage 3 : standard 2-layer MLP:
-    model:add(nn.Reshape(64*2*2))
-    model:add(nn.Linear(64*2*2, 200))
-    model:add(nn.Tanh())
-    model:add(nn.Linear(200, 10))
+    if self.dataset == 'mnist' then
+        -- stage 1 : mean suppresion -> filter bank -> squashing -> max pooling
+        model:add(nn.SpatialConvolutionMM(1, 32, 5, 5))
+        model:add(nn.Tanh())
+        model:add(nn.SpatialMaxPooling(3, 3, 3, 3))
+        -- stage 2 : mean suppresion -> filter bank -> squashing -> max pooling
+        model:add(nn.SpatialConvolutionMM(32, 64, 5, 5))
+        model:add(nn.Tanh())
+        model:add(nn.SpatialMaxPooling(2, 2, 2, 2))
+        -- stage 3 : standard 2-layer MLP:
+        model:add(nn.Reshape(64*2*2))
+        model:add(nn.Linear(64*2*2, 200))
+        model:add(nn.Tanh())
+        model:add(nn.Linear(200, 10))
+    else
+        model:add(cast(nn.Copy('torch.FloatTensor', torch.type(cast(torch.Tensor())))))
+        model:add(cast(dofile('models/vgg_bn_drop.lua')))
+        model:get(2).updateGradInput = function(input) return end
+    end
     -- model:add(nn.LogSoftMax())
     return model
 end
@@ -120,18 +135,19 @@ function cnnGameEnv:train()
                 self.soft_label[i] = self.soft_label[i]:cuda()
             end
         end
+        print(self.batchindex, self.datapointer)
+        assert(self.batchindex * 64 == self.datapointer - 1)
         targets = { soft_target = self.soft_label[self.batchindex], labels = targets }
 
 
-        -- test here! TODO: move to test part
+        -- test softlabel here! TODO: move to a stand alone test part
         local _, idx = torch.max(targets.soft_target, 2)
         for i = 1, bsize do
-
             if idx[i]:squeeze() ~= targets.labels[i] then
                 cnt_not_match = cnt_not_match + 1
                 print(idx[i])
-                print(targets.soft_target[i])
-                print(targets.labels[i])
+                --print(targets.soft_target[i])
+                --print(targets.labels[i])
             end
         end
         print("not match!!!!!!!!!!!!!!!!!", cnt_not_match)
@@ -248,8 +264,9 @@ function cnnGameEnv:test()
        local err = self.criterion:forward(pred, target)
        testError = testError + err
     end
-    -- print confusion matrix
-    print(self.confusion)
+    if self.verbose then
+        print(self.confusion)
+    end
     local testAccuracy = self.confusion.totalValid * 100
     self.confusion:zero()
     return testAccuracy, testError
@@ -376,6 +393,7 @@ function cnnGameEnv:step(action, tof)
 		self:regression(self.w3, w3, 3)
 		self:regression(self.w4, w4, 4)
     end
+
 --    -- test get_label
 --    if self.datapointer > 5 * self.batchsize then
 --        local res = self:getDistillingLabel()
@@ -396,13 +414,13 @@ function cnnGameEnv:step(action, tof)
 --        if self.epoch % self.max_epoch == 0 then
 --            self.episode = self.episode + 1
 --        end
-        local outputtrain = 'train_lr_2' .. self.episode .. '.log'--'basetrain.log'--'baseline_raw_train.log'
-        local outputtest = 'test_lr_2' .. self.episode .. '.log'--'basetest.log'--'baseline_raw_test.log'
+        local outputtrain = 'train_lr_KL_0.1_' .. self.episode .. '.log'--'basetrain.log'--'baseline_raw_train.log'
+        local outputtest = 'test_lr_KL_0.1_' .. self.episode .. '.log'--'basetest.log'--'baseline_raw_test.log'
         os.execute('echo ' .. self.trainAcc .. ' >> logs/' .. outputtrain)
         self.trainAcc = 0
         local testAcc,  testErr = self:test()
         os.execute('echo ' .. testAcc .. ' >> logs/' .. outputtest)
-        self.batchindex = 1 --reset the batch pointer
+        self.batchindex = 0 --reset the batch pointer
         self.epoch = self.epoch + 1
         print('epoch = ' .. self.epoch)
         sys.sleep(4)
