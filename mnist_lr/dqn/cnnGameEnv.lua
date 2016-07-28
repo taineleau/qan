@@ -4,18 +4,23 @@ require 'torch'
 require 'cutorch'
 require 'dataset-mnist'
 require 'optim'
+dofile '../cifar.torch/provider.lua'
 dofile 'distilling_criterion.lua'
 
 local cnnGameEnv = torch.class('cnnGameEnv')
 
+local function cast(t)
+    return t:cuda()
+end
+
 function cnnGameEnv:__init(opt)
 	print('option from cmd: \n', opt)
 	self.base = '../save/'
---	function check(name)
---		local f = io.open(name, "r")
---		if f ~= nil then io.close(f) return true else return false end
---	end
-	print('init game environment')
+	function isExist(name)
+		local f = io.open(name, "r")
+		if f ~= nil then io.close(f) return true else return false end
+	end
+	print('init game environment.\n')
 	torch.manualSeed(os.time())
 	torch.setdefaulttensortype('torch.FloatTensor')
     self.dataset = opt.dataset
@@ -26,14 +31,16 @@ function cnnGameEnv:__init(opt)
     self.trsize = 60000
     self.tesize = 10000
     local geometry = {32, 32}
-    if self.dataset == 'mnist' then
+    if self.dataset == 'MNIST' then
         self.trainData = mnist.loadTrainSet(self.trsize, geometry)
         self.trainData:normalizeGlobal(mean, std)
         self.testData = mnist.loadTestSet(self.tesize, geometry)
         self.testData:normalizeGlobal(mean, std)
     else
+        if not isExist('base' .. 'provider.t7') then
+            -- TODO: add provider loading code
+        end
         local provider = torch.load('../save/provider.t7')
-        --provider:normalize()
         provider.trainData.data = provider.trainData.data:float()
         provider.testData.data = provider.testData.data:float()
         self.trainData = provider.trainData
@@ -46,12 +53,7 @@ function cnnGameEnv:__init(opt)
     self.learningRate = opt.learningRate  --init learning rate
     self.weightDecay = 0
     self.momentum = 0
-	--load filter for regression
-	self.w1 = torch.load(self.base..'cnnfilter1.t7')
-	self.w2 = torch.load(self.base..'cnnfilter2.t7')
-	self.w3 = torch.load(self.base..'cnnfilter3.t7')
-	self.w4 = torch.load(self.base..'cnnfilter4.t7')
-    self.finalerr = 0.0001 
+    self.finalerr = 0.0001
     self.epoch = 0
     self.episode = 0
     self.batchindex = 1  --train batch by batch
@@ -61,6 +63,18 @@ function cnnGameEnv:__init(opt)
 	self.terminal = false  --whether a episode game stop
     self.datapointer = 1  --serve as a pointer, scan all the training data in one iteration.
 	self.max_epoch = opt.max_epoch   -- # of epoch in one episode
+    if opt.DQN_off == 1 then
+        self.DQN_off = true
+    else
+        if opt.extra_loss == 1 then
+            self.extra_loss = true
+            --print("extra_loss on".. self.extra_loss .. "\n\n\n\n\n")
+            self.w1 = torch.load(self.base..'cnnfilter1.t7')
+            self.w2 = torch.load(self.base..'cnnfilter2.t7')
+            self.w3 = torch.load(self.base..'cnnfilter3.t7')
+            self.w4 = torch.load(self.base..'cnnfilter4.t7')
+        end
+    end
 	if opt.distilling_on == 1 then -- if knowledge distilling is on
         print("distilling configuring here..")
         self.distilling_start_epoch = 0
@@ -68,7 +82,8 @@ function cnnGameEnv:__init(opt)
         self.softDataset = self.trainData
         self.temp = opt.temp -- distilling temperature
         self.sm = nn.SoftMax():cuda()
-        self.soft_criterion = DistillingCriterion(0.1, 3, 'KL')-- DistillingCriterion(0.1, opt.temp, 'L2')
+        self.distilling_loss = opt.distilling_loss
+        self.soft_criterion = DistillingCriterion(0.1, 3, self.distilling_loss)-- DistillingCriterion(0.1, opt.temp, 'L2')
         -- read from previously saved log or not
         self.history = true -- to load a soft_label from *.t7 or not
     end
@@ -77,7 +92,8 @@ end
 
 function cnnGameEnv:create_mlp_model()
     local model = nn.Sequential()
-    if self.dataset == 'mnist' then
+    if self.dataset == 'MNIST' then
+        print('Building a MNIST model.\n')
         -- stage 1 : mean suppresion -> filter bank -> squashing -> max pooling
         model:add(nn.SpatialConvolutionMM(1, 32, 5, 5))
         model:add(nn.Tanh())
@@ -92,6 +108,7 @@ function cnnGameEnv:create_mlp_model()
         model:add(nn.Tanh())
         model:add(nn.Linear(200, 10))
     else
+        print('Building a CIFAR model.\n')
         model:add(cast(nn.Copy('torch.FloatTensor', torch.type(cast(torch.Tensor())))))
         model:add(cast(dofile('models/vgg_bn_drop.lua')))
         model:get(2).updateGradInput = function(input) return end
@@ -136,7 +153,7 @@ function cnnGameEnv:train()
             end
         end
         print(self.batchindex, self.datapointer)
-        assert(self.batchindex * 64 == self.datapointer - 1)
+        assert(self.batchindex * self.batchsize == self.datapointer - 1)
         targets = { soft_target = self.soft_label[self.batchindex], labels = targets }
 
 
@@ -340,14 +357,14 @@ end
 
 function cnnGameEnv:getActions()
 	local gameActions = {}
-	for i=1,3 do
+	for i=1, 3 do
 		gameActions[i] = i
 	end
 	return gameActions
 end
 
 function cnnGameEnv:getState(verbose) --state is set in cnn.lua
-	verbose = verbose or false
+	local verbose = verbose or false
 	--return state, reward, terminal
 	local tstate = self.model:get(1).weight 
 	local size = tstate:size()[1] * tstate:size()[2]  
@@ -369,12 +386,13 @@ function cnnGameEnv:step(action, tof)
 	local minlr = 0.005
 	local maxlr = 1.0
 
-    --if (action == 1) then 
-    --    self.learningRate = math.min(self.learningRate + delta, maxlr);
-    --elseif (action == 2) then 
-    --    self.learningRate = math.max(self.learningRate - delta, minlr);
-    --end
-
+    if not self.DQN_off then
+        if (action == 1) then
+            self.learningRate = math.min(self.learningRate + delta, maxlr);
+        elseif (action == 2) then
+            self.learningRate = math.max(self.learningRate - delta, minlr);
+        end
+    end
 
     print('<trainer> on training set:' .. 'epoch #' .. self.epoch .. ', batchindex ' .. self.batchindex)
     local trainAcc, trainErr = self:train()
@@ -383,7 +401,11 @@ function cnnGameEnv:step(action, tof)
 	print('batchindex = '.. self.batchindex)
 	print('totalbatchindex = '.. self.total_batch_number)
 
-    if self.epoch % self.max_epoch <= 5 then   --let cnn train freely after 5 epoches.
+    --print(self.extra_loss)
+    --sys.sleep(10)
+    if self.extra_loss and self.epoch % self.max_epoch <= 5 then   --let cnn train freely after 5 epoches.
+    --print("it works!")
+    --sys.sleep(5)
 		local w1 = self.model:get(1).weight
 		local w2 = self.model:get(4).weight
 		local w3 = self.model:get(8).weight
@@ -414,11 +436,12 @@ function cnnGameEnv:step(action, tof)
 --        if self.epoch % self.max_epoch == 0 then
 --            self.episode = self.episode + 1
 --        end
-        local outputtrain = 'train_lr_KL_0.1_' .. self.episode .. '.log'--'basetrain.log'--'baseline_raw_train.log'
-        local outputtest = 'test_lr_KL_0.1_' .. self.episode .. '.log'--'basetest.log'--'baseline_raw_test.log'
+        local outputtrain = self.dataset .. 'train_lr_KL_0.1_dqnon_' .. self.episode .. '.log'--'basetrain.log'--'baseline_raw_train.log'
+        local outputtest = self.dataset .. 'test_lr_KL_0.1_dqnon_' .. self.episode .. '.log'--'basetest.log'--'baseline_raw_test.log'
         os.execute('echo ' .. self.trainAcc .. ' >> logs/' .. outputtrain)
         self.trainAcc = 0
         local testAcc,  testErr = self:test()
+        print("testacc: "..testAcc.."\n\n")
         os.execute('echo ' .. testAcc .. ' >> logs/' .. outputtest)
         self.batchindex = 0 --reset the batch pointer
         self.epoch = self.epoch + 1

@@ -39,9 +39,9 @@ function mnist.loadDataset(fileName, maxLoad)
    end
    data = data[{{1,nExample},{},{},{}}]
    labels = labels[{{1,nExample}}]
-   print('<mnist> done, load' .. nExample ..'example\n')
+   print('<mnist> done, load ' .. nExample ..' example')
 
-   sys.sleep(2)
+   --sys.sleep(2)
 
    local dataset = {}
    dataset.data = data

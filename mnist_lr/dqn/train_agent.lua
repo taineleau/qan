@@ -14,6 +14,8 @@ cmd:text('Train Agent in Environment:')
 cmd:text()
 cmd:text('Options:')
 
+
+cmd:option('-dataset', 'MNIST', 'choose a dataset to work on: mnist, cifar')
 cmd:option('-framework', '', 'name of training framework')
 cmd:option('-env', '', 'name of environment to use')
 cmd:option('-game_path', '', 'path to environment file (ROM)')
@@ -31,13 +33,18 @@ cmd:option('-agent_params', '', 'string of agent parameters')
 cmd:option('-seed', 1, 'fixed input seed for repeatable experiments')
 cmd:option('-saveNetworkParams', false,
            'saves the agent network in a separate file')
+cmd:option('-max_epoch', 20, 'number of epochs in each episode')
+cmd:option('-batchsize', 64, 'batch size')
 cmd:option('-prog_freq', 5*10^7, 'frequency of progress output')
 cmd:option('-save_freq', 5*10^7, 'the model is saved every save_freq steps')
 cmd:option('-eval_freq', 10^7, 'frequency of greedy evaluation')
+cmd:option('-learningRate', 0.05, 'initial learning rate')
 cmd:option('-save_versions', 0, '')
 
 cmd:option('-steps', 10^6, 'number of training steps to perform')
 cmd:option('-eval_steps', 10^5, 'number of evaluation steps')
+cmd:option('-extra_loss', 1, 'using the meta-loss or not')
+
 
 cmd:option('-verbose', 2,
            'the higher the level, the more information is printed to screen')
@@ -45,6 +52,8 @@ cmd:option('-threads', 1, 'number of BLAS threads')
 cmd:option('-gpu', -1, 'gpu flag')
 cmd:option('-distilling_on', 0, 'use distilling or not')
 cmd:option('-temp', 1, 'distilling temperature')
+cmd:option('-distilling_loss', 'KL', 'distilling loss function, L2 or KL')
+cmd:option('-DQN_off', 0, 'shutdown DQN or not')
 
 cmd:text()
 
@@ -91,9 +100,13 @@ local stepnum = 1000000 --171600 --62600000 --62600000=1000games --358800--11700
 while step < stepnum do
     step = step + 1
 	print('--------------------------------------------------------')
-	local action_index 
+	local action_index = 3
 	if step < 800000 then
-		action_index = agent:perceive(reward, screen, terminal)
+        action_index = agent:perceive(reward, screen, terminal)
+--        if opt.DQN_off == 1 then
+--            print('do not change action')
+--            action_index = 3
+--        end
 	else 
 		action_index = agent:perceive(reward, screen, terminal, true, 0.05)
 	end
@@ -196,7 +209,7 @@ while step < stepnum do
         local s, a, r, s2, term = agent.valid_s, agent.valid_a, agent.valid_r,
             agent.valid_s2, agent.valid_term
         agent.valid_s, agent.valid_a, agent.valid_r, agent.valid_s2,
-            agent.valid_term = nil, nil, nil, nil, nil, nil, nil
+            agent.valid_term = nil, nil, nil, nil, nil--, nil, nil
         local w, dw, g, g2, delta, delta2, deltas, tmp = agent.w, agent.dw,
             agent.g, agent.g2, agent.delta, agent.delta2, agent.deltas, agent.tmp
         agent.w, agent.dw, agent.g, agent.g2, agent.delta, agent.delta2,
