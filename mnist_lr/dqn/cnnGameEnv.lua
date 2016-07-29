@@ -45,6 +45,7 @@ function cnnGameEnv:__init(opt)
         provider.testData.data = provider.testData.data:float()
         self.trainData = provider.trainData
         self.testData = provider.testData
+        self.epoch_step = 25
     end
     self.classes = {'1', '2', '3', '4', '5', '6', '7', '8', '9', '10'}
     self.confusion = optim.ConfusionMatrix(self.classes)
@@ -120,97 +121,144 @@ end
 cnt_not_match = 0
 
 function cnnGameEnv:train()
-	-- The training process is modified from
-    -- [https://github.com/torch/demos/blob/master/train-a-digit-classifier/train-on-mnist.lua]
-    local dataset = self.trainData
-    -- epoch tracker
-    self.batchindex = self.batchindex or 1
-    local trainError = 0
-    -- do one mini-batch
-	local bsize = math.min(self.batchsize, dataset:size()-self.datapointer + 1)
-    print("batch zise of this iteration:", bsize)
-    local inputs = torch.CudaTensor(bsize, self.channel, 32, 32)
-    local targets = torch.CudaTensor(bsize)
-    for i = 1, bsize do
-        local idx = self.datapointer
-        local sample = dataset[idx]
-        local input = sample[1]:clone()
-        local _, target = sample[2]:clone():max(1)
-        -- print('_: ' , _)
-        target = target:squeeze()
-        -- after squeeze, it become a scalar label
-        inputs[i] = input
-        targets[i] = target
-        self.datapointer = self.datapointer + 1
-    end
 
-    if self.distilling_on and self.distilling_start == 1 then
-        if self.soft_label == nil then
-            self.soft_label = torch.load(self.base .. 'soft_label.t7')
-            print("load soft_label", self.soft_label[1])
-            for i = 1, 938 do
-                self.soft_label[i] = self.soft_label[i]:cuda()
-            end
-        end
-        print(self.batchindex, self.datapointer)
-        assert(self.batchindex * self.batchsize == self.datapointer - 1)
-        targets = { soft_target = self.soft_label[self.batchindex], labels = targets }
-
-
-        -- test softlabel here! TODO: move to a stand alone test part
-        local _, idx = torch.max(targets.soft_target, 2)
+    if dataset == "MNIST" then
+        -- The training process is modified from
+        -- [https://github.com/torch/demos/blob/master/train-a-digit-classifier/train-on-mnist.lua]
+        local dataset = self.trainData
+        -- epoch tracker
+        self.batchindex = self.batchindex or 1
+        local trainError = 0
+        -- do one mini-batch
+        local bsize = math.min(self.batchsize, dataset:size()-self.datapointer + 1)
+        print("batch zise of this iteration:", bsize)
+        local inputs = torch.CudaTensor(bsize, self.channel, 32, 32)
+        local targets = torch.CudaTensor(bsize)
         for i = 1, bsize do
-            if idx[i]:squeeze() ~= targets.labels[i] then
-                cnt_not_match = cnt_not_match + 1
-                print(idx[i])
-                --print(targets.soft_target[i])
-                --print(targets.labels[i])
-            end
+            local idx = self.datapointer
+            local sample = dataset[idx]
+            local input = sample[1]:clone()
+            local _, target = sample[2]:clone():max(1)
+            -- print('_: ' , _)
+            target = target:squeeze()
+            -- after squeeze, it become a scalar label
+            inputs[i] = input
+            targets[i] = target
+            self.datapointer = self.datapointer + 1
         end
-        print("not match!!!!!!!!!!!!!!!!!", cnt_not_match)
-        -- DistillingCriterion targets format: {soft_target, labels}
-    end
 
-    -- create closure to evaluate f(X) and df/dX
-    local feval = function(x)
-        collectgarbage()
-        if x ~= self.parameters then
-            self.parameters:copy(x)
-        end
-        self.gradParameters:zero()
-        local err, df_do
-        local output = self.model:forward(inputs)
-        print("self.distilling: ", self.distilling_on, self.distilling_start)
         if self.distilling_on and self.distilling_start == 1 then
-            print("using soft criterion. ")
-            err = self.soft_criterion:forward(output, targets)
-            df_do = self.soft_criterion:backward(output, targets)
-        else
-            print("using normal criterion. ")
-            err = self.criterion:forward(output, targets)
-            df_do = self.criterion:backward(output, targets)
-        end
-        self.model:backward(inputs, df_do)
-        for i = 1, bsize do
-            if self.distilling_on and self.distilling_start ~= nil then
-                self.confusion:add(output[i], targets.labels[i])
-            else
-                self.confusion:add(output[i], targets[i])
+            if self.soft_label == nil then
+                self.soft_label = torch.load(self.base .. 'soft_label.t7')
+                print("load soft_label", self.soft_label[1])
+                for i = 1, 938 do
+                    self.soft_label[i] = self.soft_label[i]:cuda()
+                end
             end
+            print(self.batchindex, self.datapointer)
+            assert(self.batchindex * self.batchsize == self.datapointer - 1)
+            targets = { soft_target = self.soft_label[self.batchindex], labels = targets }
+
+
+            -- test softlabel here! TODO: move to a stand alone test part
+            local _, idx = torch.max(targets.soft_target, 2)
+            for i = 1, bsize do
+                if idx[i]:squeeze() ~= targets.labels[i] then
+                    cnt_not_match = cnt_not_match + 1
+                    print(idx[i])
+                    --print(targets.soft_target[i])
+                    --print(targets.labels[i])
+                end
+            end
+            print("not match!!!!!!!!!!!!!!!!!", cnt_not_match)
+            -- DistillingCriterion targets format: {soft_target, labels}
         end
-        self.err = err
-        return f, self.gradParameters
+
+        -- create closure to evaluate f(X) and df/dX
+        local feval = function(x)
+            collectgarbage()
+            if x ~= self.parameters then
+                self.parameters:copy(x)
+            end
+            self.gradParameters:zero()
+            local err, df_do
+            local output = self.model:forward(inputs)
+            print("self.distilling: ", self.distilling_on, self.distilling_start)
+            if self.distilling_on and self.distilling_start == 1 then
+                print("using soft criterion. ")
+                err = self.soft_criterion:forward(output, targets)
+                df_do = self.soft_criterion:backward(output, targets)
+            else
+                print("using normal criterion. ")
+                err = self.criterion:forward(output, targets)
+                df_do = self.criterion:backward(output, targets)
+            end
+            self.model:backward(inputs, df_do)
+            for i = 1, bsize do
+                if self.distilling_on and self.distilling_start ~= nil then
+                    self.confusion:add(output[i], targets.labels[i])
+                else
+                    self.confusion:add(output[i], targets[i])
+                end
+            end
+            self.err = err
+            return f, self.gradParameters
+        end
+        -- optimize on current mini-batch
+        self.config = self.config or {learningRate = self.learningRate,
+                      momentum = self.momentum,
+                      learningRateDecay = 5e-7}
+        optim.sgd(feval, self.parameters, self.config)
+        print (self.confusion)
+        local trainAccuracy = self.confusion.totalValid * 100
+        print(trainAccuracy)
+        self.confusion:zero()
+        return trainAccuracy, trainError
+    else
+        self.model:training()
+        -- drop learning rate every "epoch_step" epochs
+        if self.epoch % self.epoch_step == 0 then
+            self.optimState.learningRate = self.optimState.learningRate/2
+            self.delta = self.delta/2
+        end
+
+        local targets = cast(torch.FloatTensor(self.batchsize))
+
+        local tic = torch.tic()
+        --for t,v in ipairs(indices) do
+        xlua.progress(self.batchpointer, #self.indices)
+
+        local v = self.indices[self.batchpointer]
+        self.batchpointer = self.batchpointer + 1
+        local inputs = self.trainData.data:index(1,v)
+        targets:copy(self.trainData.labels:index(1,v))
+
+        local feval = function(x)
+            if x ~= self.parameters then self.parameters:copy(x) end
+            self.gradParameters:zero()
+
+            local outputs = self.model:forward(inputs)
+            local f = self.criterion:forward(outputs, targets)
+            self.er = f
+            local df_do = self.criterion:backward(outputs, targets)
+            self.model:backward(inputs, df_do)
+
+            self.confusion:batchAdd(outputs, targets)
+
+            return f,self.gradParameters
+        end
+        optim.sgd(feval, self.parameters, self.optimState)
+        --end
+
+        self.confusion:updateValids()
+        print(('Train accuracy: '..c.cyan'%.2f'..' %%\t time: %.2f s'):format(
+            self.confusion.totalValid * 100, torch.toc(tic)))
+
+        train_acc = self.confusion.totalValid * 100
+
+        self.confusion:zero()
+        return train_acc
     end
-    -- optimize on current mini-batch
-    self.config = self.config or {learningRate = self.learningRate,
-                  momentum = self.momentum,
-                  learningRateDecay = 5e-7}
-    optim.sgd(feval, self.parameters, self.config)
-    print (self.confusion)
-    local trainAccuracy = self.confusion.totalValid * 100 
-    print(trainAccuracy)
-    self.confusion:zero()
-    return trainAccuracy, trainError
 end
 
 function cnnGameEnv:getDistillingLabel()
@@ -279,31 +327,39 @@ function cnnGameEnv:test()
        self.confusion:add(pred:view(10), target)
        -- compute error
        local err = self.criterion:forward(pred, target)
+       --print("test err!! ", err)
        testError = testError + err
     end
     if self.verbose then
         print(self.confusion)
     end
+    print(self.confusion)
     local testAccuracy = self.confusion.totalValid * 100
     self.confusion:zero()
+    print("in the function: ", testAccuracy)
     return testAccuracy, testError
 end
 
 function cnnGameEnv:regression(targets, weights, layernum)
     local input_neural_number, output_neural_number
-	if layernum == 1 then 
-		input_neural_number = 32
-		output_neural_number = 25
-	elseif layernum == 2 then
-		input_neural_number = 64
-		output_neural_number = 800
-	elseif layernum == 3 then
-		input_neural_number = 200
-		output_neural_number = 256
-	elseif layernum == 4 then
-		input_neural_number = 10
-		output_neural_number = 200
-	end
+    if self.dataset == "MNIST" then
+        if layernum == 1 then
+            input_neural_number = 32
+            output_neural_number = 25
+        elseif layernum == 2 then
+            input_neural_number = 64
+            output_neural_number = 800
+        elseif layernum == 3 then
+            input_neural_number = 200
+            output_neural_number = 256
+        elseif layernum == 4 then
+            input_neural_number = 10
+            output_neural_number = 200
+        end
+    else
+        input_neural_number = 10
+        output_neural_number = 27
+    end
 
 	--input_neural_number = 32
 	--output_neural_number = 25
@@ -314,7 +370,7 @@ function cnnGameEnv:regression(targets, weights, layernum)
 --    local regressweights = torch.CudaTensor(10, 256)
     local reg_data = torch.CudaTensor(input_neural_number, output_neural_number):fill(1)
     -- https://github.com/torch/nn/blob/master/doc/simple.md#nn.CMul
-    local reg_model = nn.Sequential()
+    reg_model = nn.Sequential()
     reg_model:add(nn.CMul(output_neural_number))
 	reg_model:cuda()
     -- how to set weights into reg_model? set in line 156
@@ -364,13 +420,27 @@ function cnnGameEnv:getActions()
 end
 
 function cnnGameEnv:getState(verbose) --state is set in cnn.lua
-	local verbose = verbose or false
-	--return state, reward, terminal
-	local tstate = self.model:get(1).weight 
-	local size = tstate:size()[1] * tstate:size()[2]  
-	print(size)
-    local filter = self.filter
-	local reward = self:reward(verbose, filter, tstate)
+	verbose = verbose or false
+    --return state, reward, terminal
+    local reward, tstate
+    if self.dataset == 'MNIST' then
+        tstate = self.model:get(1).weight
+        local size = tstate:size()[1] * tstate:size()[2]
+        print(size)
+        local filter = self.filter
+        reward = self:reward(verbose, filter, tstate)
+    else
+        local v = {}
+        for k = 1, 10 do v[k] = k end
+        local w = self.model:get(2):get(1).weight:view(64, 27):index(1, torch.LongTensor(v))
+        tstate = w
+        --local tstate = self.model:get(2):get(54):get(6).weight
+        print(tstate:size())
+        local size = tstate:size()[1] * tstate:size()[2]
+        local filter = self.filter4
+        reward = self:reward(verbose, filter, tstate)
+        --print("reward here: ", reward)
+    end
     return tstate, reward, self.terminal
 end
 
@@ -388,9 +458,9 @@ function cnnGameEnv:step(action, tof)
 
     if not self.DQN_off then
         if (action == 1) then
-            self.learningRate = math.min(self.learningRate + delta, maxlr);
+            self.learningRate = math.min(self.learningRate + delta, maxlr)
         elseif (action == 2) then
-            self.learningRate = math.max(self.learningRate - delta, minlr);
+            self.learningRate = math.max(self.learningRate - delta, minlr)
         end
     end
 
@@ -436,17 +506,17 @@ function cnnGameEnv:step(action, tof)
 --        if self.epoch % self.max_epoch == 0 then
 --            self.episode = self.episode + 1
 --        end
-        local outputtrain = self.dataset .. 'train_lr_KL_0.1_dqnon_' .. self.episode .. '.log'--'basetrain.log'--'baseline_raw_train.log'
-        local outputtest = self.dataset .. 'test_lr_KL_0.1_dqnon_' .. self.episode .. '.log'--'basetest.log'--'baseline_raw_test.log'
+        local outputtrain = self.dataset .. 'train_lr_dqnon_' .. self.episode .. '.log'--'basetrain.log'--'baseline_raw_train.log'
+        local outputtest = self.dataset .. 'test_lr_dqnon_' .. self.episode .. '.log'--'basetest.log'--'baseline_raw_test.log'
         os.execute('echo ' .. self.trainAcc .. ' >> logs/' .. outputtrain)
         self.trainAcc = 0
         local testAcc,  testErr = self:test()
-        print("testacc: "..testAcc.."\n\n")
+        print("testacc: "..testAcc.."\n testerr:" .. testErr .. "\n " )
         os.execute('echo ' .. testAcc .. ' >> logs/' .. outputtest)
         self.batchindex = 0 --reset the batch pointer
         self.epoch = self.epoch + 1
         print('epoch = ' .. self.epoch)
-        sys.sleep(4)
+        sys.sleep(5)
 
         if self.epoch > 0 and self.epoch % self.max_epoch == 0 then
             -- start distilling
