@@ -108,7 +108,7 @@ function setup(_opt)
         _opt.agent_params.transition_params =
             str_to_table(_opt.agent_params.transition_params)
     end
-
+    print("wtf!!!", _opt.agent_params)
     --- first things first
     local opt = torchSetup(_opt)
 
@@ -128,6 +128,7 @@ function setup(_opt)
     _opt.agent_params.actions   = gameActions
     _opt.agent_params.gpu       = _opt.gpu
     _opt.agent_params.best      = _opt.best
+
     if _opt.network ~= '' then
         _opt.agent_params.network = _opt.network
     end

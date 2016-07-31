@@ -5,6 +5,8 @@ require 'cutorch'
 require 'dataset-mnist'
 require 'optim'
 dofile '../cifar.torch/provider.lua'
+--require 'BatchFlip'
+local c = require 'trepl.colorize'
 dofile 'distilling_criterion.lua'
 
 local cnnGameEnv = torch.class('cnnGameEnv')
@@ -13,13 +15,18 @@ local function cast(t)
     return t:cuda()
 end
 
+
 function cnnGameEnv:__init(opt)
 	print('option from cmd: \n', opt)
 	self.base = '../save/'
 	function isExist(name)
 		local f = io.open(name, "r")
 		if f ~= nil then io.close(f) return true else return false end
-	end
+    end
+
+--    function loadData(dataset)
+--        if dataset == "MNIST" then
+--        end
 	print('init game environment.\n')
 	torch.manualSeed(os.time())
 	torch.setdefaulttensortype('torch.FloatTensor')
@@ -28,10 +35,10 @@ function cnnGameEnv:__init(opt)
     self.model:cuda()
     self.parameters, self.gradParameters = self.model:getParameters()
     self.criterion = nn.CrossEntropyCriterion():cuda()
-    self.trsize = 60000
-    self.tesize = 10000
     local geometry = {32, 32}
     if self.dataset == 'MNIST' then
+        self.trsize = 60000
+        self.tesize = 10000
         self.trainData = mnist.loadTrainSet(self.trsize, geometry)
         self.trainData:normalizeGlobal(mean, std)
         self.testData = mnist.loadTestSet(self.tesize, geometry)
@@ -46,14 +53,27 @@ function cnnGameEnv:__init(opt)
         self.trainData = provider.trainData
         self.testData = provider.testData
         self.epoch_step = 25
+        self.indices = torch.randperm(self.trainData.data:size(1)):long():split(opt.batchsize)
+        -- remove last element so that all the batches have equal size
+        self.indices[#self.indices] = nil
+        self.trsize = 50000
+        self.tesize = 10000
     end
     self.classes = {'1', '2', '3', '4', '5', '6', '7', '8', '9', '10'}
     self.confusion = optim.ConfusionMatrix(self.classes)
     self.batchsize = opt.batchsize
     self.total_batch_number = math.ceil(self.trsize / self.batchsize) - 1 --mini-batch number in one epoch
-    self.learningRate = opt.learningRate  --init learning rate
-    self.weightDecay = 0
-    self.momentum = 0
+
+    self.optimState = {
+        learningRate = opt.learningRate,
+        weightDecay = opt.weightDecay,
+        momentum = opt.momentum,
+        learningRateDecay = 1e-7
+    }
+--
+--    self.learningRate = opt.learningRate  --init learning rate
+--    self.weightDecay = 0
+--    self.momentum = 0
     self.finalerr = 0.0001
     self.epoch = 0
     self.episode = 0
@@ -63,10 +83,12 @@ function cnnGameEnv:__init(opt)
     self.mapping = {}
 	self.terminal = false  --whether a episode game stop
     self.datapointer = 1  --serve as a pointer, scan all the training data in one iteration.
+    self.batchpointer = 1
 	self.max_epoch = opt.max_epoch   -- # of epoch in one episode
     if opt.DQN_off == 1 then
         self.DQN_off = true
     else
+        self.delta = 0.1
         if opt.extra_loss == 1 then
             self.extra_loss = true
             --print("extra_loss on".. self.extra_loss .. "\n\n\n\n\n")
@@ -205,10 +227,10 @@ function cnnGameEnv:train()
             return f, self.gradParameters
         end
         -- optimize on current mini-batch
-        self.config = self.config or {learningRate = self.learningRate,
-                      momentum = self.momentum,
-                      learningRateDecay = 5e-7}
-        optim.sgd(feval, self.parameters, self.config)
+--        self.config = self.config or {learningRate = self.learningRate,
+--                      momentum = self.momentum,
+--                      learningRateDecay = 5e-7}
+        optim.sgd(feval, self.parameters, self.optimState)
         print (self.confusion)
         local trainAccuracy = self.confusion.totalValid * 100
         print(trainAccuracy)
@@ -226,6 +248,8 @@ function cnnGameEnv:train()
 
         local tic = torch.tic()
         --for t,v in ipairs(indices) do
+
+        print("DEBUG HERE!! ", self.batchpointer, #self.indices, self.indeces)
         xlua.progress(self.batchpointer, #self.indices)
 
         local v = self.indices[self.batchpointer]
@@ -309,35 +333,53 @@ end
 function cnnGameEnv:test()
 	--The testing process is also modified from
     -- [https://github.com/torch/demos/blob/master/train-a-digit-classifier/train-on-mnist.lua]
-    local dataset = self.testData
-    local testError = 0
-    print('<trainer> on testing Set:')
-    for t = 1, self.tesize do
-       -- disp progress
-       xlua.progress(t, self.tesize)
-       -- get new sample
-       local input = torch.CudaTensor(1, self.channel, 32, 32)
-       input[1] = dataset.data[t]
-       local target = dataset.labels[t]
-       -- test sample, pred is the probability assuption over ten class?
-       local pred = self.model:forward(input[1])
-	   -- print("I want to see what is in pred:")
-	   -- print(pred:view(10))
-	   -- print(target)
-       self.confusion:add(pred:view(10), target)
-       -- compute error
-       local err = self.criterion:forward(pred, target)
-       --print("test err!! ", err)
-       testError = testError + err
-    end
-    if self.verbose then
+        if self.dataset == "MNIST" then
+        local dataset = self.testData
+        local testError = 0
+        print('<trainer> on testing Set:')
+        for t = 1, self.tesize do
+           -- disp progress
+           xlua.progress(t, self.tesize)
+           -- get new sample
+           local input = torch.CudaTensor(1, self.channel, 32, 32)
+           input[1] = dataset.data[t]
+           local target = dataset.labels[t]
+           -- test sample, pred is the probability assuption over ten class?
+           local pred = self.model:forward(input[1])
+           -- print("I want to see what is in pred:")
+           -- print(pred:view(10))
+           -- print(target)
+           self.confusion:add(pred:view(10), target)
+           -- compute error
+           local err = self.criterion:forward(pred, target)
+           --print("test err!! ", err)
+           testError = testError + err
+        end
+        if self.verbose then
+            print(self.confusion)
+        end
         print(self.confusion)
+        local testAccuracy = self.confusion.totalValid * 100
+        self.confusion:zero()
+        print("in the function: ", testAccuracy)
+        return testAccuracy, testError
+    else
+        -- disable flips, dropouts and batch normalization
+        self.model:evaluate()
+        print(c.blue '==>'.." testing")
+        local bs = 125
+        for i=1,self.testData.data:size(1),bs do
+            local outputs = self.model:forward(self.testData.data:narrow(1,i,bs))
+            self.confusion:batchAdd(outputs, self.testData.labels:narrow(1,i,bs))
+        end
+
+        self.confusion:updateValids()
+        local testacc = self.confusion.totalValid * 100
+        print('Test accuracy:', testacc)
+
+        self.confusion:zero()
+        return testacc
     end
-    print(self.confusion)
-    local testAccuracy = self.confusion.totalValid * 100
-    self.confusion:zero()
-    print("in the function: ", testAccuracy)
-    return testAccuracy, testError
 end
 
 function cnnGameEnv:regression(targets, weights, layernum)
@@ -458,9 +500,9 @@ function cnnGameEnv:step(action, tof)
 
     if not self.DQN_off then
         if (action == 1) then
-            self.learningRate = math.min(self.learningRate + delta, maxlr)
+            self.optimState.learningRate = math.min(self.optimState.learningRate + self.delta, maxlr)
         elseif (action == 2) then
-            self.learningRate = math.max(self.learningRate - delta, minlr)
+            self.optimState.learningRate = math.max(self.optimState.learningRate - self.delta, minlr)
         end
     end
 
@@ -473,7 +515,7 @@ function cnnGameEnv:step(action, tof)
 
     --print(self.extra_loss)
     --sys.sleep(10)
-    if self.extra_loss and self.epoch % self.max_epoch <= 5 then   --let cnn train freely after 5 epoches.
+    if self.dataset == "MNIST" and self.extra_loss and self.epoch % self.max_epoch <= 5 then   --let cnn train freely after 5 epoches.
     --print("it works!")
     --sys.sleep(5)
 		local w1 = self.model:get(1).weight
@@ -511,7 +553,7 @@ function cnnGameEnv:step(action, tof)
         os.execute('echo ' .. self.trainAcc .. ' >> logs/' .. outputtrain)
         self.trainAcc = 0
         local testAcc,  testErr = self:test()
-        print("testacc: "..testAcc.."\n testerr:" .. testErr .. "\n " )
+        --print("testacc: "..testAcc.."\n testerr:" .. testErr .. "\n " )
         os.execute('echo ' .. testAcc .. ' >> logs/' .. outputtest)
         self.batchindex = 0 --reset the batch pointer
         self.epoch = self.epoch + 1

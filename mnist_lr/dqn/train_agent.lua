@@ -38,12 +38,17 @@ cmd:option('-batchsize', 64, 'batch size')
 cmd:option('-prog_freq', 5*10^7, 'frequency of progress output')
 cmd:option('-save_freq', 5*10^7, 'the model is saved every save_freq steps')
 cmd:option('-eval_freq', 10^7, 'frequency of greedy evaluation')
-cmd:option('-learningRate', 0.05, 'initial learning rate')
 cmd:option('-save_versions', 0, '')
 
 cmd:option('-steps', 10^6, 'number of training steps to perform')
 cmd:option('-eval_steps', 10^5, 'number of evaluation steps')
 cmd:option('-extra_loss', 1, 'using the meta-loss or not')
+
+-- optim state
+cmd:option('-learningRate', 0.05, 'initial learning rate')
+cmd:option('-weightDecay', 0.0005, 'initial weightDecay')
+cmd:option('-momentum', 0.9, 'initial momentum')
+
 
 
 cmd:option('-verbose', 2,

@@ -10,7 +10,7 @@ trans = torch.class('dqn.TransitionTable')
 
 
 function trans:__init(args)
-    self.stateDim = 32*25 --256*10 --1024 * 25  --51200 --args.stateDim  --modify the state dim from alewrap to cnnweights
+    self.stateDim = args.state_dim--32*25 --256*10 --1024 * 25  --51200 --args.stateDim  --modify the state dim from alewrap to cnnweights
     self.numActions = args.numActions
 	print ('>>>>>>>>>>>>>>>>>>>>histlen = ' .. args.histLen)
     self.histLen = args.histLen

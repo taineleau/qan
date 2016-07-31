@@ -12,7 +12,8 @@ local nql = torch.class('dqn.NeuralQLearner')
 
 
 function nql:__init(args)
-	self.state_dim  = 32*25 --256*10 --1024*5*5  --args.state_dim -- State dimensionality.
+	print("args.here!!!!", args.input_dim1, args.input_dim2)
+	self.state_dim  = args.input_dim1 * args.input_dim2--32*25 --256*10 --1024*5*5  --args.state_dim -- State dimensionality.
 	self.actions    = args.actions
 	self.n_actions  = #self.actions
 	self.verbose    = args.verbose
@@ -53,7 +54,7 @@ function nql:__init(args)
 	self.gpu            = args.gpu
 
 	self.ncols          = args.ncols or 1  -- number of color channels in input
-	self.input_dims     = args.input_dims or {self.hist_len*self.ncols, 32, 25} --10, 512} --256, 100} --{self.hist_len*self.ncols, 84, 84}
+	self.input_dims     = args.input_dims or {self.hist_len*self.ncols, args.input_dim1, args.input_dim2} --10, 512} --256, 100} --{self.hist_len*self.ncols, 84, 84}
 	self.preproc        = args.preproc  -- name of preprocessing network
 	self.histType       = args.histType or "linear"  -- history type to use
 	self.histSpacing    = args.histSpacing or 1
@@ -151,7 +152,8 @@ function nql:__init(args)
 		histLen = self.hist_len, gpu = self.gpu,
 		maxSize = self.replay_memory, histType = self.histType,
 		histSpacing = self.histSpacing, nonTermProb = self.nonTermProb,
-		bufferSize = self.bufferSize
+		bufferSize = self.bufferSize,
+		state_dim=self.state_dim
 	}
 
 	self.transitions = dqn.TransitionTable(transition_args) --TODO load from file
@@ -350,6 +352,8 @@ function nql:perceive(reward, state, terminal, testing, testing_ep)
 	--Store transition s, a, r, s'
 	-- TODO store lastState, lastAction and lastTerminal
 	if self.lastState and not testing then
+		print("DEBUG!!", self.transitions, self.lastState, self.lastAction, reward,
+			self.lastTerminal, priority)
 		self.transitions:add(self.lastState, self.lastAction, reward,
 		self.lastTerminal, priority)
 	end
