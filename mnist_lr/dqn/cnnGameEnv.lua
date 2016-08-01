@@ -58,6 +58,7 @@ function cnnGameEnv:__init(opt)
         self.indices[#self.indices] = nil
         self.trsize = 50000
         self.tesize = 10000
+        self.game_epoch = 30
     end
     self.classes = {'1', '2', '3', '4', '5', '6', '7', '8', '9', '10'}
     self.confusion = optim.ConfusionMatrix(self.classes)
@@ -382,6 +383,13 @@ function cnnGameEnv:test()
     end
 end
 
+
+
+function cnnGameEnv:meta_momentum(w, targetw, alpha)
+    local tmp = torch.CudaTensor(targetw:size()):copy(targetw)
+    w:add(tmp:add(-w):mul(alpha))  --w = w + (target_w - w) * 0.01
+end
+
 function cnnGameEnv:regression(targets, weights, layernum)
     local input_neural_number, output_neural_number
     if self.dataset == "MNIST" then
@@ -515,17 +523,28 @@ function cnnGameEnv:step(action, tof)
 
     --print(self.extra_loss)
     --sys.sleep(10)
-    if self.dataset == "MNIST" and self.extra_loss and self.epoch % self.max_epoch <= 5 then   --let cnn train freely after 5 epoches.
-    --print("it works!")
-    --sys.sleep(5)
-		local w1 = self.model:get(1).weight
-		local w2 = self.model:get(4).weight
-		local w3 = self.model:get(8).weight
-		local w4 = self.model:get(10).weight
-		self:regression(self.w1, w1, 1)
-		self:regression(self.w2, w2, 2)
-		self:regression(self.w3, w3, 3)
-		self:regression(self.w4, w4, 4)
+    if self.dataset == "MNIST" then
+        if self.extra_loss and self.epoch % self.max_epoch <= 5 then   --let cnn train freely after 5 epoches.
+        --print("it works!")
+        --sys.sleep(5)
+            local w1 = self.model:get(1).weight
+            local w2 = self.model:get(4).weight
+            local w3 = self.model:get(8).weight
+            local w4 = self.model:get(10).weight
+--            self:regression(self.w1, w1, 1)
+--            self:regression(self.w2, w2, 2)
+--            self:regression(self.w3, w3, 3)
+--            self:regression(self.w4, w4, 4)
+        self:meta_momentum(w1, self.w1, 0.01)
+        self:meta_momentum(w2, self.w2, 0.01)
+        self:meta_momentum(w3, self.w3, 0.01)
+        self:meta_momentum(w4, self.w4, 0.01)
+        end
+    else
+        if self.epoch % self.game_epoch <= 30 then   --Let mlp train freely after 10 epoches.
+            --self:regression(self.filter, w)
+            self:meta_momentum(self.fliter, w, 0.01)
+        end
     end
 
 --    -- test get_label
@@ -556,6 +575,7 @@ function cnnGameEnv:step(action, tof)
         --print("testacc: "..testAcc.."\n testerr:" .. testErr .. "\n " )
         os.execute('echo ' .. testAcc .. ' >> logs/' .. outputtest)
         self.batchindex = 0 --reset the batch pointer
+        self.batchpointer = 1
         self.epoch = self.epoch + 1
         print('epoch = ' .. self.epoch)
         sys.sleep(5)
