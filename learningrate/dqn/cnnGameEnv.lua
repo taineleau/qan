@@ -541,7 +541,7 @@ function cnnGameEnv:step(action, tof)
         self:meta_momentum(w4, self.w4, 0.01)
         end
     else
-        if self.epoch % self.game_epoch <= 30 then   --Let mlp train freely after 10 epoches.
+        if self.extra_loss and self.epoch % self.game_epoch <= 30 then   --Let mlp train freely after 10 epoches.
             --self:regression(self.filter, w)
             self:meta_momentum(self.fliter, w, 0.01)
         end
@@ -580,7 +580,7 @@ function cnnGameEnv:step(action, tof)
         print('epoch = ' .. self.epoch)
         sys.sleep(5)
 
-        if self.epoch > 0 and self.epoch % self.max_epoch == 0 then
+        if self.distilling_on and self.epoch > 0 and self.epoch % self.max_epoch == 0 then
             -- start distilling
             if self.distilling_start == nil then
                 self.distilling_start = 1
