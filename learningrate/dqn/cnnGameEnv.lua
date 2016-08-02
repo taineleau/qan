@@ -93,10 +93,14 @@ function cnnGameEnv:__init(opt)
         if opt.extra_loss == 1 then
             self.extra_loss = true
             --print("extra_loss on".. self.extra_loss .. "\n\n\n\n\n")
-            self.w1 = torch.load(self.base..'cnnfilter1.t7')
-            self.w2 = torch.load(self.base..'cnnfilter2.t7')
-            self.w3 = torch.load(self.base..'cnnfilter3.t7')
-            self.w4 = torch.load(self.base..'cnnfilter4.t7')
+            if self.dataset == "MNIST" then
+                self.w1 = torch.load(self.base..'cnnfilter1.t7')
+                self.w2 = torch.load(self.base..'cnnfilter2.t7')
+                self.w3 = torch.load(self.base..'cnnfilter3.t7')
+                self.w4 = torch.load(self.base..'cnnfilter4.t7')
+            else
+                self.filter = torch.load(self.base..'target_mlp1'):view(64,27):index(1, torch.LongTensor(v))
+            end
         end
     end
 	if opt.distilling_on == 1 then -- if knowledge distilling is on
@@ -178,7 +182,7 @@ function cnnGameEnv:train()
                     self.soft_label[i] = self.soft_label[i]:cuda()
                 end
             end
-            print(self.batchindex, self.datapointer)
+            --print(self.batchindex, self.datapointer)
             assert(self.batchindex * self.batchsize == self.datapointer - 1)
             targets = { soft_target = self.soft_label[self.batchindex], labels = targets }
 
@@ -193,7 +197,7 @@ function cnnGameEnv:train()
                     --print(targets.labels[i])
                 end
             end
-            print("not match!!!!!!!!!!!!!!!!!", cnt_not_match)
+            --print("not match!!!!!!!!!!!!!!!!!", cnt_not_match)
             -- DistillingCriterion targets format: {soft_target, labels}
         end
 
@@ -233,6 +237,7 @@ function cnnGameEnv:train()
 --                      learningRateDecay = 5e-7}
         optim.sgd(feval, self.parameters, self.optimState)
         print (self.confusion)
+        confusion:updateValids()
         local trainAccuracy = self.confusion.totalValid * 100
         print(trainAccuracy)
         self.confusion:zero()
@@ -250,7 +255,7 @@ function cnnGameEnv:train()
         local tic = torch.tic()
         --for t,v in ipairs(indices) do
 
-        print("DEBUG HERE!! ", self.batchpointer, #self.indices, self.indeces)
+        --print("DEBUG HERE!! ", self.batchpointer, #self.indices, self.indeces)
         xlua.progress(self.batchpointer, #self.indices)
 
         local v = self.indices[self.batchpointer]
@@ -276,6 +281,7 @@ function cnnGameEnv:train()
         --end
 
         self.confusion:updateValids()
+        print (self.confusion)
         print(('Train accuracy: '..c.cyan'%.2f'..' %%\t time: %.2f s'):format(
             self.confusion.totalValid * 100, torch.toc(tic)))
 
@@ -359,7 +365,7 @@ function cnnGameEnv:test()
         if self.verbose then
             print(self.confusion)
         end
-        print(self.confusion)
+        confusion:updateValids()
         local testAccuracy = self.confusion.totalValid * 100
         self.confusion:zero()
         print("in the function: ", testAccuracy)
@@ -376,6 +382,7 @@ function cnnGameEnv:test()
 
         self.confusion:updateValids()
         local testacc = self.confusion.totalValid * 100
+        print (self.confusion)
         print('Test accuracy:', testacc)
 
         self.confusion:zero()
@@ -567,8 +574,8 @@ function cnnGameEnv:step(action, tof)
 --        if self.epoch % self.max_epoch == 0 then
 --            self.episode = self.episode + 1
 --        end
-        local outputtrain = self.dataset .. 'train_lr_dqnon_' .. self.episode .. '.log'--'basetrain.log'--'baseline_raw_train.log'
-        local outputtest = self.dataset .. 'test_lr_dqnon_' .. self.episode .. '.log'--'basetest.log'--'baseline_raw_test.log'
+        local outputtrain = self.dataset .. 'train_lr_dqnon_default_' .. self.episode .. '.log'--'basetrain.log'--'baseline_raw_train.log'
+        local outputtest = self.dataset .. 'test_lr_dqnon_default_' .. self.episode .. '.log'--'basetest.log'--'baseline_raw_test.log'
         os.execute('echo ' .. self.trainAcc .. ' >> logs/' .. outputtrain)
         self.trainAcc = 0
         local testAcc,  testErr = self:test()
