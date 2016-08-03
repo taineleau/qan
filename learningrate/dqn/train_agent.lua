@@ -100,7 +100,7 @@ screen, reward, terminal = game_env:getState(true)
 --
 --print("Iteration ..", step)
 local win = nil
-local stepnum = 1000000 --171600 --62600000 --62600000=1000games --358800--11700000 --opt.steps
+local stepnum = 50000 * 10000 --171600 --62600000 --62600000=1000games --358800--11700000 --opt.steps
 
 while step < stepnum do
     step = step + 1
@@ -222,7 +222,7 @@ while step < stepnum do
 
         local filename = opt.name
         if opt.save_versions > 0 then
-            filename = filename .. "_" .. math.floor(step / opt.save_versions)
+            filename = filename .. "_" .. math.floor(step / opt.save_versions) .. '_' .. step
         end
         filename = filename
         torch.save(filename .. ".t7", {agent = agent,

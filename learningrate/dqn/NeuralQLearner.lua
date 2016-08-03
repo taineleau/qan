@@ -352,8 +352,8 @@ function nql:perceive(reward, state, terminal, testing, testing_ep)
 	--Store transition s, a, r, s'
 	-- TODO store lastState, lastAction and lastTerminal
 	if self.lastState and not testing then
-		print("DEBUG!!", self.transitions, self.lastState, self.lastAction, reward,
-			self.lastTerminal, priority)
+		--print("DEBUG!!", self.transitions, self.lastState, self.lastAction, reward,
+		--	self.lastTerminal, priority)
 		self.transitions:add(self.lastState, self.lastAction, reward,
 		self.lastTerminal, priority)
 	end

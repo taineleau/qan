@@ -15,6 +15,26 @@ local function cast(t)
     return t:cuda()
 end
 
+do
+local BatchFlip, parent = torch.class('nn.BatchFlip', 'nn.Module')
+
+function BatchFlip:__init()
+    parent.__init(self)
+    self.train = true
+end
+
+function BatchFlip:updateOutput(input)
+    if self.train then
+        local bs = input:size(1)
+        local flip_mask = torch.randperm(bs):le(bs/2)
+        for i=1,input:size(1) do
+            if flip_mask[i] == 1 then image.hflip(input[i], input[i]) end
+        end
+    end
+    self.output:set(input)
+    return self.output
+end
+end
 
 function cnnGameEnv:__init(opt)
 	print('option from cmd: \n', opt)
@@ -86,10 +106,10 @@ function cnnGameEnv:__init(opt)
     self.datapointer = 1  --serve as a pointer, scan all the training data in one iteration.
     self.batchpointer = 1
 	self.max_epoch = opt.max_epoch   -- # of epoch in one episode
+    self.delta = 0.1
     if opt.DQN_off == 1 then
         self.DQN_off = true
     else
-        self.delta = 0.1
         if opt.extra_loss == 1 then
             self.extra_loss = true
             --print("extra_loss on".. self.extra_loss .. "\n\n\n\n\n")
@@ -99,7 +119,11 @@ function cnnGameEnv:__init(opt)
                 self.w3 = torch.load(self.base..'cnnfilter3.t7')
                 self.w4 = torch.load(self.base..'cnnfilter4.t7')
             else
-                self.filter = torch.load(self.base..'target_mlp1'):view(64,27):index(1, torch.LongTensor(v))
+                local v = {}
+                for k = 1, 10 do v[k] = k end
+                self.filter = torch.load(self.base..'new_target_filter207'):view(64,27):index(1, torch.LongTensor(v))
+                print(c.blue'wtf', self.filter)
+                --:view(64,27):index(1, torch.LongTensor(v))
             end
         end
     end
@@ -137,6 +161,8 @@ function cnnGameEnv:create_mlp_model()
         model:add(nn.Linear(200, 10))
     else
         print('Building a CIFAR model.\n')
+
+        --model:add(nn.BatchFlip():float())
         model:add(cast(nn.Copy('torch.FloatTensor', torch.type(cast(torch.Tensor())))))
         model:add(cast(dofile('models/vgg_bn_drop.lua')))
         model:get(2).updateGradInput = function(input) return end
@@ -285,7 +311,7 @@ function cnnGameEnv:train()
         print(('Train accuracy: '..c.cyan'%.2f'..' %%\t time: %.2f s'):format(
             self.confusion.totalValid * 100, torch.toc(tic)))
 
-        train_acc = self.confusion.totalValid * 100
+        local train_acc = self.confusion.totalValid * 100
 
         self.confusion:zero()
         return train_acc
@@ -514,6 +540,7 @@ function cnnGameEnv:step(action, tof)
 	local maxlr = 1.0
 
     if not self.DQN_off then
+        print(c.blue"DQN works!");
         if (action == 1) then
             self.optimState.learningRate = math.min(self.optimState.learningRate + self.delta, maxlr)
         elseif (action == 2) then
@@ -548,9 +575,13 @@ function cnnGameEnv:step(action, tof)
         self:meta_momentum(w4, self.w4, 0.01)
         end
     else
+        local v = {}
+        for k = 1, 10 do v[k] = k end
+        local w = self.model:get(2):get(1).weight:view(64,27):index(1,torch.LongTensor(v))
         if self.extra_loss and self.epoch % self.game_epoch <= 30 then   --Let mlp train freely after 10 epoches.
             --self:regression(self.filter, w)
-            self:meta_momentum(self.fliter, w, 0.01)
+            print(c.blue"selffilter", self.filter)
+            self:meta_momentum(self.filter, w, 0.01)
         end
     end
 
@@ -574,8 +605,8 @@ function cnnGameEnv:step(action, tof)
 --        if self.epoch % self.max_epoch == 0 then
 --            self.episode = self.episode + 1
 --        end
-        local outputtrain = self.dataset .. 'train_lr_dqnon_default_' .. self.episode .. '.log'--'basetrain.log'--'baseline_raw_train.log'
-        local outputtest = self.dataset .. 'test_lr_dqnon_default_' .. self.episode .. '.log'--'basetest.log'--'baseline_raw_test.log'
+        local outputtrain = self.dataset .. 'train_lr_BatchFlip_' .. self.episode .. '.log'--'basetrain.log'--'baseline_raw_train.log'
+        local outputtest = self.dataset .. 'test_lr_BatchFlip_' .. self.episode .. '.log'--'basetest.log'--'baseline_raw_test.log'
         os.execute('echo ' .. self.trainAcc .. ' >> logs/' .. outputtrain)
         self.trainAcc = 0
         local testAcc,  testErr = self:test()
